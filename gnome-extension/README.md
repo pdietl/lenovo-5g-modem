@@ -16,8 +16,17 @@ It exists because the built-in indicator does neither:
   Ethernet or Wi-Fi connected the cellular icon is not drawn anywhere.
 
 This reads ModemManager directly over D-Bus, so it is independent of which
-connection NetworkManager considers primary. It stands down when the built-in
-icon is already showing cellular, so the two never appear twice.
+connection NetworkManager considers primary.
+
+When cellular *is* primary the shell draws its own cellular icon, so this one
+hides its bars to avoid showing two. The technology label always stays: it is
+wanted most exactly when cellular is the connection in use, and the shell never
+renders it. So the panel reads:
+
+| Primary connection | Panel shows |
+| --- | --- |
+| Ethernet or Wi-Fi | `[bars] 5G SA` from here, plus the shell's wired/Wi-Fi icon |
+| Cellular | `5G SA` from here, immediately ahead of the shell's own bars |
 
 Labels: `2G`, `G`, `E`, `3G`, `H`, `H+`, `LTE`, `5G` (EN-DC), `5G SA`
 (standalone). Signal thresholds and icon names are taken from the shell's own

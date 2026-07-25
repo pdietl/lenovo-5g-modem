@@ -114,10 +114,13 @@ export default class CellularTechExtension extends Extension {
         if (!box)
             return;
 
+        /* Sit just ahead of the network indicator, so that when cellular is the
+         * primary connection the technology reads directly into the signal bars
+         * the shell draws for it. */
         const network = quickSettings._network;
         const index = network ? box.get_children().indexOf(network) : -1;
         if (index >= 0)
-            box.insert_child_at_index(this._box, index + 1);
+            box.insert_child_at_index(this._box, index);
         else
             box.add_child(this._box);
 
@@ -226,11 +229,7 @@ export default class CellularTechExtension extends Extension {
                 active = modem;
         }
 
-        const primaryIsCellular =
-            this._primaryIndicator?.visible &&
-            this._primaryIndicator.icon_name?.startsWith('network-cellular');
-
-        if (!active || primaryIsCellular) {
+        if (!active) {
             this._box.visible = false;
             return;
         }
@@ -244,7 +243,17 @@ export default class CellularTechExtension extends Extension {
             this._label.text = techLabel(active.tech);
         }
 
+        /* Only the bars are suppressed when the shell is already drawing
+         * cellular for the primary connection. The technology label stays: it is
+         * most wanted precisely when cellular is the connection in use, and the
+         * shell never renders it. When the primary indicator cannot be found
+         * there is nothing to duplicate, so the bars are kept. */
+        const primaryIsCellular =
+            !!this._primaryIndicator?.visible &&
+            !!this._primaryIndicator.icon_name?.startsWith('network-cellular');
+
+        this._icon.visible = !primaryIsCellular;
         this._label.visible = this._label.text !== '';
-        this._box.visible = true;
+        this._box.visible = this._icon.visible || this._label.visible;
     }
 }
