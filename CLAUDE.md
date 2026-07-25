@@ -38,6 +38,21 @@ modem is configured. Most things that look misconfigured here are not.
   that ModemManager links against. Run `qmicli` from the build tree with
   `LD_LIBRARY_PATH`.
 
+## Cold boot signature
+
+The modem boots FCC-locked every time, so this in `journalctl -b -u ModemManager`
+is the *healthy* trace, not a fault:
+
+```
+Cannot power-up: sotware radio switch is OFF      <- booted locked
+power state updated: on                           <- hook ran, ~2s later
+state changed (enabling -> enabled) -> registered -> connected
+```
+
+The failure looks the same up to the first line and is then followed by
+`couldn't enable interface: 'Invalid transition'`, with the modem staying at
+`power state: low`.
+
 ## Verify the modem is healthy
 
 ```sh
@@ -50,9 +65,9 @@ route-metric 1050, so bind to `wwan0` explicitly whenever another link is up.
 
 ## Open items
 
-- The FCC unlock hook is verified across modem power cycles and SIM slot
-  switches, and by deliberately re-locking the modem. **Not yet verified from a
-  cold boot.**
+- Suspend/resume with the modem active is untested on BIOS 0.1.06, whose
+  changelog claims a fix for "the linux system will hung sometimes when into
+  S3 (Environment: 5G WWAN + Linux System)".
 - The `qmicli` patch in `patches/` is not upstream. Submitting it needs a
   gitlab.freedesktop.org fork, which needs a one-time project-limit request in
   the `freedesktop/freedesktop` issue tracker; new accounts there cannot create

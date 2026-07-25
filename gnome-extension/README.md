@@ -35,23 +35,23 @@ Labels: `2G`, `G`, `E`, `3G`, `H`, `H+`, `LTE`, `5G` (EN-DC), `5G SA`
 ## Install
 
 ```sh
-cp -r cellular-tech@pdietl.local ~/.local/share/gnome-shell/extensions/
-gnome-extensions enable cellular-tech@pdietl.local
+./install.sh
 ```
 
-If `gnome-extensions enable` reports the extension does not exist, the shell has
-not enumerated it yet. Extensions are collected once at shell startup and the
-directories are not monitored, so a newly created one is invisible until the next
-login. Enable it via gsettings instead and log out:
+Run it as yourself, not root: it installs under `$XDG_DATA_HOME` (or
+`~/.local/share`) and enables the extension for your session.
 
-```sh
-gsettings set org.gnome.shell enabled-extensions \
-    "$(gsettings get org.gnome.shell enabled-extensions \
-        | sed "s/]$/, 'cellular-tech@pdietl.local']/;s/^@as \[\]$/['cellular-tech@pdietl.local']/")"
-```
+**A first install needs a log out and back in.** `gnome-extensions enable` can
+only act on extensions the shell already knows about, and the shell enumerates
+them once at startup with no directory monitor — so a newly created extension is
+invisible until the next login. `install.sh` writes the `enabled-extensions`
+setting directly in that case, preserving any extensions already listed.
 
-On Wayland the shell cannot be restarted in place, so this needs a log out and
-back in rather than `Alt+F2 r`.
+A log out is also needed after *editing* the code. The shell imports
+`extension.js` by URI with no cache-busting, and GJS caches ES modules for the
+life of the session, so disabling and re-enabling re-runs the old code. On
+Wayland the shell cannot be restarted in place either, so `Alt+F2 r` is not an
+option.
 
 Three settings gate user extensions entirely; all must be permissive:
 

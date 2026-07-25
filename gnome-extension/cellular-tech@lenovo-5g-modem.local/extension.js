@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -8,6 +9,13 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 const MM_NAME = 'org.freedesktop.ModemManager1';
 const MM_PATH = '/org/freedesktop/ModemManager1';
 const MM_MODEM_IFACE = 'org.freedesktop.ModemManager1.Modem';
+
+const NM_NAME = 'org.freedesktop.NetworkManager';
+const NM_PATH = '/org/freedesktop/NetworkManager';
+
+/* NMSettingConnection type strings whose icon the shell already draws as
+ * cellular. Empty means no primary connection at all. */
+const CELLULAR_CONNECTION_TYPES = ['gsm', 'cdma'];
 
 /* MMModemAccessTechnology bits */
 const TECH_5GNR = 1 << 15;
@@ -66,6 +74,8 @@ export default class CellularTechExtension extends Extension {
     enable() {
         this._modems = new Map();
         this._signalIds = [];
+        this._nmSignalIds = [];
+        this._primaryType = '';
 
         this._box = new St.BoxLayout({
             style_class: 'panel-status-indicators-box cellular-tech-box',
@@ -82,10 +92,42 @@ export default class CellularTechExtension extends Extension {
         this._placeIndicator();
 
         this._bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, null);
+        this._watchPrimaryConnection();
         this._nameWatchId = Gio.bus_watch_name(
             Gio.BusType.SYSTEM, MM_NAME, Gio.BusNameWatcherFlags.NONE,
             () => this._modemManagerAppeared(),
             () => this._modemManagerVanished());
+    }
+
+    /* The shell draws one icon, for whichever connection NetworkManager reports
+     * as primary. Asking NetworkManager which type that is answers "will the
+     * shell already be showing cellular bars?" from the same source the shell
+     * binds its own indicator to, without reading its internals. */
+    _watchPrimaryConnection() {
+        this._nmSignalIds.push(this._bus.signal_subscribe(
+            NM_NAME, 'org.freedesktop.DBus.Properties', 'PropertiesChanged',
+            NM_PATH, NM_NAME, Gio.DBusSignalFlags.NONE,
+            (conn_, sender_, path_, iface_, signal_, params) => {
+                const [, changed] = params.deepUnpack();
+                if ('PrimaryConnectionType' in changed) {
+                    this._primaryType = changed.PrimaryConnectionType.deepUnpack();
+                    this._sync();
+                }
+            }));
+
+        this._bus.call(
+            NM_NAME, NM_PATH, 'org.freedesktop.DBus.Properties', 'Get',
+            new GLib.Variant('(ss)', [NM_NAME, 'PrimaryConnectionType']),
+            null, Gio.DBusCallFlags.NONE, -1, null,
+            (bus, res) => {
+                try {
+                    const [value] = bus.call_finish(res).deepUnpack();
+                    this._primaryType = value.deepUnpack();
+                    this._sync();
+                } catch (e) {
+                    console.warn(`cellular-tech: primary connection type: ${e.message}`);
+                }
+            });
     }
 
     disable() {
@@ -94,9 +136,9 @@ export default class CellularTechExtension extends Extension {
             this._nameWatchId = 0;
         }
         this._unsubscribe();
-
-        this._primaryIndicator?.disconnectObject(this);
-        this._primaryIndicator = null;
+        for (const id of this._nmSignalIds ?? [])
+            this._bus?.signal_unsubscribe(id);
+        this._nmSignalIds = [];
 
         this._box?.destroy();
         this._box = null;
@@ -123,15 +165,6 @@ export default class CellularTechExtension extends Extension {
             box.insert_child_at_index(this._box, index);
         else
             box.add_child(this._box);
-
-        /* The shell shows a single icon for whichever connection is primary, so
-         * a connected modem is invisible whenever Ethernet or Wi-Fi is up. This
-         * indicator covers that gap, and stands down when the built-in icon is
-         * already showing cellular so the two never appear twice. */
-        this._primaryIndicator = network?._primaryIndicator ?? null;
-        this._primaryIndicator?.connectObject(
-            'notify::icon-name', () => this._sync(),
-            'notify::visible', () => this._sync(), this);
     }
 
     _unsubscribe() {
@@ -246,11 +279,9 @@ export default class CellularTechExtension extends Extension {
         /* Only the bars are suppressed when the shell is already drawing
          * cellular for the primary connection. The technology label stays: it is
          * most wanted precisely when cellular is the connection in use, and the
-         * shell never renders it. When the primary indicator cannot be found
-         * there is nothing to duplicate, so the bars are kept. */
+         * shell never renders it. */
         const primaryIsCellular =
-            !!this._primaryIndicator?.visible &&
-            !!this._primaryIndicator.icon_name?.startsWith('network-cellular');
+            CELLULAR_CONNECTION_TYPES.includes(this._primaryType);
 
         this._icon.visible = !primaryIsCellular;
         this._label.visible = this._label.text !== '';
