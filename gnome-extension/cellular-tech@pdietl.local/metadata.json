@@ -1,0 +1,7 @@
+{
+  "uuid": "cellular-tech@pdietl.local",
+  "name": "Cellular Technology Indicator",
+  "description": "Shows the active cellular access technology (2G/3G/LTE/5G/5G SA) as a label beside the network indicator. Distinguishes 5G standalone from EN-DC, which the built-in indicator does not expose.",
+  "shell-version": ["50"],
+  "version": 1
+}

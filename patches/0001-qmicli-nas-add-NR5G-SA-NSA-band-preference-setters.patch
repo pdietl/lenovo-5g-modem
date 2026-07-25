@@ -1,0 +1,305 @@
+From dd228958c533361f9b686c953b6da306ceef7357 Mon Sep 17 00:00:00 2001
+From: Pete Dietl <petedietl@gmail.com>
+Date: Sat, 25 Jul 2026 03:49:59 -0500
+Subject: [PATCH] qmicli,nas: add NR5G SA/NSA band preference setters
+
+'Get System Selection Preference' already prints the NR5G SA and NSA band
+preferences, but there was no way to set them: the only writer is
+--nas-set-system-selection-preference, whose parser handles the RAT mode
+and network selection fields alone. The 'NR5G SA Band Preference' and
+'NR5G NSA Band Preference' input TLVs were therefore unreachable from the
+command line.
+
+Add --nas-set-nr5g-sa-band-preference and --nas-set-nr5g-nsa-band-preference,
+taking a comma separated band list. Bands may be written bare or with the
+'nX' spelling used when the preference is printed, so output can be fed
+back in.
+
+Restricting the SA band preference is what makes it possible to tell a
+modem that will not select a standalone cell apart from one the network
+refuses to register, since otherwise the modem is free to camp on any
+permitted SA band.
+
+While at it, list 5gnr among the accepted modes of
+--nas-set-system-selection-preference. It has always been accepted, as
+that parser resolves tokens through the QmiNasRatModePreference and
+QmiNasRadioInterface nicks, but it was missing from the help string.
+---
+ src/qmicli/qmicli-helpers.c    | 43 +++++++++++++++++
+ src/qmicli/qmicli-helpers.h    |  8 ++++
+ src/qmicli/qmicli-nas.c        | 84 +++++++++++++++++++++++++++++++++-
+ src/qmicli/test/test-helpers.c | 55 ++++++++++++++++++++++
+ 4 files changed, 189 insertions(+), 1 deletion(-)
+
+diff --git a/src/qmicli/qmicli-helpers.c b/src/qmicli/qmicli-helpers.c
+index bca09cad..cc0bc9dd 100644
+--- a/src/qmicli/qmicli-helpers.c
++++ b/src/qmicli/qmicli-helpers.c
+@@ -374,6 +374,49 @@ qmicli_read_ssp_rat_options_from_string (const gchar              *str,
+     return success && (mode_preference_set || acquisition_order_set);;
+ }
+ 
++gboolean
++qmicli_read_nr5g_band_preference_from_string (const gchar *str,
++                                              guint64     *out_masks)
++{
++    g_auto(GStrv) band_strings = NULL;
++    guint         i;
++
++    memset (out_masks, 0, QMICLI_NR5G_BAND_PREFERENCE_N_MASKS * sizeof (guint64));
++
++    band_strings = g_strsplit (str, ",", -1);
++    if (!band_strings || !band_strings[0]) {
++        g_printerr ("error: no NR5G band given\n");
++        return FALSE;
++    }
++
++    for (i = 0; band_strings[i]; i++) {
++        const gchar *startptr;
++        gchar       *endptr;
++        gint64       band;
++
++        startptr = band_strings[i];
++        /* accept the same 'nX' spelling used when printing the preference */
++        if (startptr[0] == 'n' || startptr[0] == 'N')
++            startptr++;
++
++        band = g_ascii_strtoll (startptr, &endptr, 10);
++        if (startptr == endptr || *endptr != '\0') {
++            g_printerr ("error: couldn't parse '%s' as a NR5G band\n", band_strings[i]);
++            return FALSE;
++        }
++
++        if (band < 1 || band > (QMICLI_NR5G_BAND_PREFERENCE_N_MASKS * 64)) {
++            g_printerr ("error: NR5G band %" G_GINT64_FORMAT " out of range [1,%u]\n",
++                        band, QMICLI_NR5G_BAND_PREFERENCE_N_MASKS * 64);
++            return FALSE;
++        }
++
++        out_masks[(band - 1) / 64] |= ((guint64) 1) << ((band - 1) % 64);
++    }
++
++    return TRUE;
++}
++
+ static gboolean
+ parse_3gpp_mcc_mnc (const gchar *str,
+                     guint16 *out_mcc,
+diff --git a/src/qmicli/qmicli-helpers.h b/src/qmicli/qmicli-helpers.h
+index 2a796842..b5f31105 100644
+--- a/src/qmicli/qmicli-helpers.h
++++ b/src/qmicli/qmicli-helpers.h
+@@ -106,6 +106,14 @@ gboolean qmicli_read_ssp_net_options_from_string             (const gchar *str,
+                                                               QmiNasNetworkSelectionPreference *out_network_preference,
+                                                               guint16 *out_network_mcc,
+                                                               guint16 *out_network_mnc);
++
++/* Number of 64bit masks used to carry a NR5G band preference, as defined by
++ * the 'NR5G SA Band Preference' and 'NR5G NSA Band Preference' TLVs. Band N is
++ * bit (N-1)%64 of mask (N-1)/64. */
++#define QMICLI_NR5G_BAND_PREFERENCE_N_MASKS 8
++
++gboolean qmicli_read_nr5g_band_preference_from_string        (const gchar *str,
++                                                              guint64     *out_masks);
+ gboolean qmicli_read_parse_3gpp_mcc_mnc                      (const gchar *str,
+                                                               guint16     *out_mcc,
+                                                               guint16     *out_mnc,
+diff --git a/src/qmicli/qmicli-nas.c b/src/qmicli/qmicli-nas.c
+index 7fdb715a..bde1c18f 100644
+--- a/src/qmicli/qmicli-nas.c
++++ b/src/qmicli/qmicli-nas.c
+@@ -62,6 +62,8 @@ static gboolean get_preferred_networks_flag;
+ static gchar *set_preferred_networks_str;
+ static gboolean get_system_selection_preference_flag;
+ static gchar *set_system_selection_preference_str;
++static gchar *set_nr5g_sa_band_preference_str;
++static gchar *set_nr5g_nsa_band_preference_str;
+ static gchar *get_plmn_name_str;
+ #if defined HAVE_QMI_MESSAGE_NAS_NETWORK_SCAN
+ static gchar *network_scan_str;
+@@ -176,7 +178,15 @@ static GOptionEntry entries[] = {
+ #if defined HAVE_QMI_MESSAGE_NAS_SET_SYSTEM_SELECTION_PREFERENCE
+     { "nas-set-system-selection-preference", 0, 0, G_OPTION_ARG_STRING, &set_system_selection_preference_str,
+       "Set system selection preference",
+-      "[cdma-1x|cdma-1xevdo|gsm|umts|lte|td-scdma][,[automatic|manual=MCCMNC]]"
++      "[cdma-1x|cdma-1xevdo|gsm|umts|lte|td-scdma|5gnr][,[automatic|manual=MCCMNC]]"
++    },
++    { "nas-set-nr5g-sa-band-preference", 0, 0, G_OPTION_ARG_STRING, &set_nr5g_sa_band_preference_str,
++      "Set NR5G SA band preference",
++      "[band1,band2,...]"
++    },
++    { "nas-set-nr5g-nsa-band-preference", 0, 0, G_OPTION_ARG_STRING, &set_nr5g_nsa_band_preference_str,
++      "Set NR5G NSA band preference",
++      "[band1,band2,...]"
+     },
+ #endif
+ #if defined HAVE_QMI_MESSAGE_NAS_NETWORK_SCAN
+@@ -305,6 +315,8 @@ qmicli_nas_options_enabled (void)
+                  !!set_preferred_networks_str +
+                  get_system_selection_preference_flag +
+                  !!set_system_selection_preference_str +
++                 !!set_nr5g_sa_band_preference_str +
++                 !!set_nr5g_nsa_band_preference_str +
+                  !!get_plmn_name_str +
+                  network_scan_flag +
+                  incremental_network_scan_flag +
+@@ -3071,6 +3083,50 @@ out:
+     return input;
+ }
+ 
++static QmiMessageNasSetSystemSelectionPreferenceInput *
++set_nr5g_band_preference_input_create (const gchar *str,
++                                       gboolean     standalone)
++{
++    QmiMessageNasSetSystemSelectionPreferenceInput *input;
++    GError                                         *error = NULL;
++    guint64                                         masks[QMICLI_NR5G_BAND_PREFERENCE_N_MASKS];
++
++    if (!qmicli_read_nr5g_band_preference_from_string (str, masks))
++        return NULL;
++
++    /* from now on, if an error happens, the GError must be set */
++    input = qmi_message_nas_set_system_selection_preference_input_new ();
++
++    if (!qmi_message_nas_set_system_selection_preference_input_set_change_duration (input, QMI_NAS_CHANGE_DURATION_PERMANENT, &error))
++        goto out;
++
++    if (standalone) {
++        if (!qmi_message_nas_set_system_selection_preference_input_set_nr5g_sa_band_preference (
++                input,
++                masks[0], masks[1], masks[2], masks[3],
++                masks[4], masks[5], masks[6], masks[7],
++                &error))
++            goto out;
++    } else {
++        if (!qmi_message_nas_set_system_selection_preference_input_set_nr5g_nsa_band_preference (
++                input,
++                masks[0], masks[1], masks[2], masks[3],
++                masks[4], masks[5], masks[6], masks[7],
++                &error))
++            goto out;
++    }
++
++out:
++    if (error) {
++        g_printerr ("error: couldn't create input data bundle: '%s'\n", error->message);
++        g_error_free (error);
++        qmi_message_nas_set_system_selection_preference_input_unref (input);
++        return NULL;
++    }
++
++    return input;
++}
++
+ static void
+ set_system_selection_preference_ready (QmiClientNas *client,
+                                        GAsyncResult *res)
+@@ -5032,6 +5088,32 @@ qmicli_nas_run (QmiDevice *device,
+         qmi_message_nas_set_system_selection_preference_input_unref (input);
+         return;
+     }
++
++    if (set_nr5g_sa_band_preference_str || set_nr5g_nsa_band_preference_str) {
++        QmiMessageNasSetSystemSelectionPreferenceInput *input;
++        gboolean                                        standalone;
++
++        standalone = !!set_nr5g_sa_band_preference_str;
++        g_debug ("Asynchronously setting NR5G %s band preference...", standalone ? "SA" : "NSA");
++
++        input = set_nr5g_band_preference_input_create (standalone ?
++                                                       set_nr5g_sa_band_preference_str :
++                                                       set_nr5g_nsa_band_preference_str,
++                                                       standalone);
++        if (!input) {
++            operation_shutdown (FALSE);
++            return;
++        }
++
++        qmi_client_nas_set_system_selection_preference (ctx->client,
++                                                        input,
++                                                        10,
++                                                        ctx->cancellable,
++                                                        (GAsyncReadyCallback)set_system_selection_preference_ready,
++                                                        NULL);
++        qmi_message_nas_set_system_selection_preference_input_unref (input);
++        return;
++    }
+ #endif
+ 
+ #if defined HAVE_QMI_MESSAGE_NAS_NETWORK_SCAN
+diff --git a/src/qmicli/test/test-helpers.c b/src/qmicli/test/test-helpers.c
+index b2c1fb50..5fa9dc2b 100644
+--- a/src/qmicli/test/test-helpers.c
++++ b/src/qmicli/test/test-helpers.c
+@@ -402,6 +402,56 @@ test_parse_key_value_string_mixed_quotes (void)
+ 
+ /******************************************************************************/
+ 
++static void
++test_helpers_nr5g_band_preference_single (void)
++{
++    guint64 masks[QMICLI_NR5G_BAND_PREFERENCE_N_MASKS];
++    guint   i;
++
++    g_assert (qmicli_read_nr5g_band_preference_from_string ("41", masks));
++    g_assert_cmpuint (masks[0], ==, ((guint64) 1) << 40);
++    for (i = 1; i < G_N_ELEMENTS (masks); i++)
++        g_assert_cmpuint (masks[i], ==, 0);
++}
++
++static void
++test_helpers_nr5g_band_preference_list (void)
++{
++    guint64 masks[QMICLI_NR5G_BAND_PREFERENCE_N_MASKS];
++
++    /* the 'nX' spelling is the one used when printing the preference.
++     * n41 lives in mask 0; n77 and n78 live in mask 1 */
++    g_assert (qmicli_read_nr5g_band_preference_from_string ("n41,n77,n78", masks));
++    g_assert_cmpuint (masks[0], ==, ((guint64) 1) << 40);
++    g_assert_cmpuint (masks[1], ==, (((guint64) 1) << 12) | (((guint64) 1) << 13));
++}
++
++static void
++test_helpers_nr5g_band_preference_mask_bounds (void)
++{
++    guint64 masks[QMICLI_NR5G_BAND_PREFERENCE_N_MASKS];
++
++    /* band 64 is the last bit of mask 0, band 65 the first bit of mask 1, and
++     * band 512 the last bit of the last mask */
++    g_assert (qmicli_read_nr5g_band_preference_from_string ("64,65,512", masks));
++    g_assert_cmpuint (masks[0], ==, ((guint64) 1) << 63);
++    g_assert_cmpuint (masks[1], ==, ((guint64) 1) << 0);
++    g_assert_cmpuint (masks[7], ==, ((guint64) 1) << 63);
++}
++
++static void
++test_helpers_nr5g_band_preference_invalid (void)
++{
++    guint64 masks[QMICLI_NR5G_BAND_PREFERENCE_N_MASKS];
++
++    g_assert (!qmicli_read_nr5g_band_preference_from_string ("0", masks));
++    g_assert (!qmicli_read_nr5g_band_preference_from_string ("513", masks));
++    g_assert (!qmicli_read_nr5g_band_preference_from_string ("n41x", masks));
++    g_assert (!qmicli_read_nr5g_band_preference_from_string ("lte", masks));
++}
++
++/******************************************************************************/
++
+ int main (int argc, char **argv)
+ {
+     g_test_init (&argc, &argv, NULL);
+@@ -429,6 +479,11 @@ int main (int argc, char **argv)
+     g_test_add_func ("/qmicli/helpers/supported-message-list",      test_helpers_supported_messages_list);
+     g_test_add_func ("/qmicli/helpers/supported-message-list/none", test_helpers_supported_messages_list_none);
+ 
++    g_test_add_func ("/qmicli/helpers/nr5g-band-preference/single",       test_helpers_nr5g_band_preference_single);
++    g_test_add_func ("/qmicli/helpers/nr5g-band-preference/list",         test_helpers_nr5g_band_preference_list);
++    g_test_add_func ("/qmicli/helpers/nr5g-band-preference/mask-bounds",  test_helpers_nr5g_band_preference_mask_bounds);
++    g_test_add_func ("/qmicli/helpers/nr5g-band-preference/invalid",      test_helpers_nr5g_band_preference_invalid);
++
+     g_test_add_func ("/qmicli/helpers/key-value/no-quotes",     test_parse_key_value_string_no_quotes);
+     g_test_add_func ("/qmicli/helpers/key-value/single-quotes", test_parse_key_value_string_single_quotes);
+     g_test_add_func ("/qmicli/helpers/key-value/double-quotes", test_parse_key_value_string_double_quotes);
+-- 
+2.53.0
+

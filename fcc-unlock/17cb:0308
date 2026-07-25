@@ -1,0 +1,44 @@
+#!/bin/sh
+# SPDX-License-Identifier: CC0-1.0
+#
+# Foxconn T99W696 / Qualcomm SDX62 (PCI 17cb:0308) FCC unlock.
+#
+# Overrides the Lenovo-provided hook of the same name in
+#   /usr/lib/x86_64-linux-gnu/ModemManager/fcc-unlock.d/17cb:0308
+# which calls /opt/fcc_lenovo/DPR_Fcc_unlock_service. That wrapper refuses to
+# unlock whenever it detects a US SIM ("This is a US SIM card." -> "FCC unlock
+# failed"), which leaves the modem stuck at "power state: low" /
+# "Cannot power-up: software radio switch is OFF" on any US carrier, including
+# Google Fi. Lenovo state this is a business decision (no US carrier
+# certification for Linux), not a hardware limitation:
+#   https://github.com/lenovo/lenovo-wwan-unlock/issues/88
+#
+# /usr/local/sbin/foxconn-fcc-unlock calls Fox_Attempt() in Lenovo's own
+# /opt/fcc_lenovo/lib/libfiisdk.so.2.2.2 -- the same SDK entry point their
+# wrapper uses -- so the unlock itself is done by unmodified vendor code. The
+# SDK contains no SIM/country logic; only the wrapper does.
+#
+# ModemManager invokes this as: <script> <dbus-path> <port> [<port>...]
+# and does not retry it if it fails.
+
+[ $# -lt 2 ] && exit 1
+
+# first argument is the DBus path, not needed here
+shift
+
+# find the MBIM control port among the remaining arguments
+for PORT in "$@"; do
+  # port type, Linux 5.14 and newer
+  if grep -q MBIM "/sys/class/wwan/$PORT/type" 2>/dev/null; then
+    MBIM_PORT="$PORT"
+    break
+  fi
+  # fall back to matching on the port name
+  case "$PORT" in
+    *[Mm][Bb][Ii][Mm]*) MBIM_PORT="$PORT"; break ;;
+  esac
+done
+
+[ -n "$MBIM_PORT" ] || exit 2
+
+exec /usr/local/sbin/foxconn-fcc-unlock "/dev/$MBIM_PORT"
