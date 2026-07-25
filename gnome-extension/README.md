@@ -21,12 +21,15 @@ connection NetworkManager considers primary.
 When cellular *is* primary the shell draws its own cellular icon, so this one
 hides its bars to avoid showing two. The technology label always stays: it is
 wanted most exactly when cellular is the connection in use, and the shell never
-renders it. So the panel reads:
+renders it.
 
-| Primary connection | Panel shows |
+The indicator sits immediately after the network indicator so that signal bars
+always precede the technology, whichever set of bars is being shown:
+
+| Primary connection | Panel reads |
 | --- | --- |
-| Ethernet or Wi-Fi | `[bars] 5G SA` from here, plus the shell's wired/Wi-Fi icon |
-| Cellular | `5G SA` from here, immediately ahead of the shell's own bars |
+| Ethernet or Wi-Fi | shell's wired/Wi-Fi icon, then `[bars] 5G SA` from here |
+| Cellular | the shell's own bars, then `5G SA` from here |
 
 Labels: `2G`, `G`, `E`, `3G`, `H`, `H+`, `LTE`, `5G` (EN-DC), `5G SA`
 (standalone). Signal thresholds and icon names are taken from the shell's own

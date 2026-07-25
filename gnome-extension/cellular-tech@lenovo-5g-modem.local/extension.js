@@ -156,15 +156,24 @@ export default class CellularTechExtension extends Extension {
         if (!box)
             return;
 
-        /* Sit just ahead of the network indicator, so that when cellular is the
-         * primary connection the technology reads directly into the signal bars
-         * the shell draws for it. */
+        /* Sit immediately after the network indicator. Bars then technology has
+         * to hold in both cases, and when cellular is primary the bars being
+         * shown are the shell's own, drawn from that indicator -- so placing
+         * ahead of it would put the label on the wrong side of them.
+         *
+         * set_child_above_sibling() rather than an index: it says "directly
+         * after this actor" without depending on where the actor sits. */
         const network = quickSettings._network;
-        const index = network ? box.get_children().indexOf(network) : -1;
-        if (index >= 0)
-            box.insert_child_at_index(this._box, index);
-        else
-            box.add_child(this._box);
+        box.add_child(this._box);
+        if (network)
+            box.set_child_above_sibling(this._box, network);
+
+        console.debug(`cellular-tech: indicator order: ${
+            box.get_children()
+                .map(c => (c === this._box ? '<self>'
+                    : c === network ? '<network>'
+                    : c.constructor?.name ?? 'actor'))
+                .join(' ')}`);
     }
 
     _unsubscribe() {
