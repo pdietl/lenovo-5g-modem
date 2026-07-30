@@ -36,8 +36,7 @@ const TECH_NAMES = [
 ];
 
 /* MMModemState */
-const STATE_SEARCHING = 8;
-const STATE_REGISTERED = 9;
+const STATE_REGISTERED = 8;
 
 function techLabel(bits) {
     /* 5GNR with an LTE anchor is EN-DC (non-standalone). 5GNR alone means the
@@ -261,11 +260,17 @@ export default class CellularTechExtension extends Extension {
         if (!this._box)
             return;
 
-        /* Several modem objects can be present while one is being torn down, and
-         * a modem below SEARCHING reports a stale technology and signal. */
+        /* Drawn only while a data connection is up or being built: strictly
+         * above REGISTERED. A modem left merely registered -- cellular switched
+         * off in quick settings, or no connection profile active -- carries no
+         * traffic, and drawing it would keep a meaningless signal icon in the
+         * panel indefinitely.
+         *
+         * Several modem objects can be present at once while one is being torn
+         * down, so prefer the furthest along. */
         let active = null;
         for (const modem of this._modems.values()) {
-            if (modem.state < STATE_SEARCHING)
+            if (modem.state <= STATE_REGISTERED)
                 continue;
             if (!active || modem.state > active.state)
                 active = modem;
@@ -276,14 +281,9 @@ export default class CellularTechExtension extends Extension {
             return;
         }
 
-        if (active.state < STATE_REGISTERED) {
-            this._icon.icon_name = 'network-cellular-acquiring-symbolic';
-            this._label.text = '';
-        } else {
-            this._icon.icon_name =
-                `network-cellular-signal-${signalToIcon(active.quality)}-symbolic`;
-            this._label.text = techLabel(active.tech);
-        }
+        this._icon.icon_name =
+            `network-cellular-signal-${signalToIcon(active.quality)}-symbolic`;
+        this._label.text = techLabel(active.tech);
 
         /* Only the bars are suppressed when the shell is already drawing
          * cellular for the primary connection. The technology label stays: it is
