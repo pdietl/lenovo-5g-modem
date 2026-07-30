@@ -60,8 +60,10 @@ mmcli -m any | grep -E 'state:|power state|access tech|operator name'
 curl -s --interface wwan0 -o /dev/null -w '%{http_code}\n' https://www.google.com/generate_204
 ```
 
-Expect `state: connected`, `power state: on`, and `204`. Cellular sits at
-route-metric 1050, so bind to `wwan0` explicitly whenever another link is up.
+Expect `state: connected`, `power state: on`, and `204`. Cellular stays
+connected as a fallback but loses the routing decision to any working link
+(route metrics: IPv4 1050, IPv6 30000 — see docs/diagnostics.md), so bind to
+`wwan0` explicitly whenever another link is up.
 
 ## Open items
 

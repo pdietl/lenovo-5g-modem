@@ -128,9 +128,36 @@ print(f"{total*8/dt/1e6:.1f} Mbps")
 EOF
 ```
 
-Cellular sits at route-metric 1050, so it loses to Ethernet and Wi-Fi. Bind
-explicitly with `curl --interface wwan0` or `ping -I wwan0` to test it while
-another link is up.
+Bind explicitly with `curl --interface wwan0` or `ping -I wwan0` to test
+cellular while another link is up: the routing policy below keeps it off the
+default path whenever anything else works.
+
+## Routing policy: cellular stays up, carries traffic last
+
+The `Google Fi` profile autoconnects and stays connected; route metrics decide
+what actually carries traffic.
+
+- **IPv4 metric 1050.** Loses to Ethernet (~100) and Wi-Fi (600). When
+  NetworkManager's connectivity check fails on a link it penalises that link's
+  default route by +20000, so a captive portal or dead uplink fails over to
+  cellular by itself.
+- **IPv6 metric 30000.** Loses even to a *penalised* link. A v4-only Wi-Fi
+  (RAs but no global prefix) fails the v6 connectivity check, and with cellular
+  at the stock 1050 the v6 default then flips to `wwan0` — sending most
+  dual-stack traffic over metered cellular while Wi-Fi carries only IPv4.
+
+On a v4-only network the machine therefore has no IPv6 at all: dual-stack
+applications drop to IPv4 with no visible stall, but an explicit `curl -6`
+times out rather than failing fast.
+
+`/etc/sysctl.d/90-ipv6-oif-source-only.conf` sets
+`net.ipv6.conf.*.use_oif_addrs_only=1`, pinning IPv6 source selection to the
+outgoing interface. Without it the kernel borrows the cellular interface's
+global address as source for the Wi-Fi route, and replies can arrive back over
+cellular — an asymmetric path that keeps using metered data invisibly. The
+kernel consults only the outgoing interface's own flag (`conf.all` is ignored
+for this knob), which is why the file uses a glob: systemd's udev rule
+re-applies it to each interface as it appears.
 
 ## Comparing against an Android phone
 
