@@ -28,6 +28,7 @@ There is nothing to fix locally for this. See [docs/FINDINGS.md](docs/FINDINGS.m
 | [`fcc-unlock/`](fcc-unlock/) | FCC unlock tool, ModemManager hook, and installer. **Required** for the modem to work at all. |
 | [`gnome-extension/`](gnome-extension/) | GNOME Shell indicator showing cellular signal and access technology (`LTE` / `5G` / `5G SA`), which the built-in indicator does not. |
 | [`patches/`](patches/) | `qmicli` patch adding NR5G SA/NSA band preference setters. Needed to pin the modem to a single 5G band. |
+| [`routing/`](routing/) | Fallback routing policy and installer: cellular stays connected but loses to any working link, per address family. |
 | [`docs/FINDINGS.md`](docs/FINDINGS.md) | Why the modem behaves as it does, with the measurements behind each claim. |
 | [`docs/fcc-unlock-protocol.md`](docs/fcc-unlock-protocol.md) | The unlock protocol, for replacing the vendor blob with pure `qmicli`. |
 | [`docs/diagnostics.md`](docs/diagnostics.md) | Command cookbook, and the measurement traps worth avoiding. |
@@ -46,14 +47,19 @@ redone on every modem power-on, which is what the hook is for.
 Then create a connection. Google Fi's APN is `h2g2`:
 
 ```sh
-nmcli connection add type gsm ifname '*' con-name 'Google Fi' \
-    gsm.apn h2g2 connection.metered yes \
-    ipv4.route-metric 1050 ipv6.route-metric 1050
+nmcli connection add type gsm ifname '*' con-name 'Google Fi' gsm.apn h2g2
 ```
 
 `ifname '*'` and leaving `gsm.sim-id` unset matter: NetworkManager otherwise pins
 the profile to the ICCID it first activated on and then silently refuses the
 other SIM after a slot switch.
+
+Then apply the routing policy, which keeps cellular connected as a fallback
+that only carries traffic when nothing else works:
+
+```sh
+cd routing && sudo ./install.sh
+```
 
 ## Status
 

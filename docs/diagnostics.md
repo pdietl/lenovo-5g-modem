@@ -135,7 +135,8 @@ default path whenever anything else works.
 ## Routing policy: cellular stays up, carries traffic last
 
 The `Google Fi` profile autoconnects and stays connected; route metrics decide
-what actually carries traffic.
+what actually carries traffic. `routing/install.sh` applies everything in this
+section.
 
 - **IPv4 metric 1050.** Loses to Ethernet (~100) and Wi-Fi (600). When
   NetworkManager's connectivity check fails on a link it penalises that link's
