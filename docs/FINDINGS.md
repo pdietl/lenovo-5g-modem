@@ -111,6 +111,44 @@ so read it as "both are in the same -95..-101 range".
 The phone's `csiRsrp`/`csiRsrq` report floor values (-140 / -20) because CSI-RS
 is not being measured; `ssRsrp`/`ssRsrq` are the valid figures.
 
+## Suspend can leave cellular blocked from autoconnect
+
+NetworkManager (1.54.3) tears the modem down for sleep with the deactivation
+reason `user-requested`, where Wi-Fi and Ethernet get `sleeping`:
+
+```
+device (enp195s0f0): state change: activated -> deactivating (reason 'sleeping', ...)
+device (wwan0mbim0): state change: activated -> disconnected (reason 'user-requested', ...)
+```
+
+A user-requested disconnect is the same reason the Mobile quick-settings tile
+produces, and that reason class is what blocks a profile from autoconnecting.
+After some suspends the block is still standing on resume: the modem
+re-enumerates and registers, and the profile then sits disconnected
+indefinitely, because nothing on the resume path clears the block or retries.
+Clicking Mobile connects immediately; after the next suspend the profile was
+blocked again.
+
+Not every suspend arms it. Cycles where the connection had last been activated
+by NetworkManager's own policy autoconnected by themselves ~18 s after resume,
+and a plain `nmcli connection down`/`up` before sleeping did not arm it
+either; the standing block followed activations made from the quick settings
+menu. The discriminating experiment on a blocked profile: a no-op
+`nmcli connection modify` — profile updates reset autoconnect blocks — made
+policy activate it within milliseconds, where toggling the device's
+autoconnect flag did nothing.
+
+`resume-reconnect/` works around it without needing the exact arming
+conditions: after every resume it waits out the modem re-probe and
+re-activates any autoconnect-enabled cellular profile still down; when
+NetworkManager autoconnects by itself, it sees that and exits without acting.
+
+Separately, the Mobile tile is absent for ~20 s after every resume: suspend
+kills the in-flight MBIM transactions, so ModemManager declares the modem gone
+and re-probes it from scratch, under a new index. Resume to connected measured
+18–21 s. Twenty s2idle suspend cycles on BIOS 1.06 (R38ET26W), from seconds to
+40 minutes with the modem active, produced no hang.
+
 ## Measurement traps
 
 Both of these produced confidently wrong conclusions before being caught.

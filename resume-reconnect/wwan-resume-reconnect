@@ -1,0 +1,45 @@
+#!/bin/sh
+# Re-activate cellular after resume.
+#
+# NetworkManager's sleep path disconnects the modem with reason
+# 'user-requested' where Wi-Fi and Ethernet get 'sleeping'. When the
+# torn-down connection had been activated manually, that reason leaves the
+# profile blocked from autoconnect, and nothing on the resume path clears
+# the block or re-evaluates the device once the modem re-registers -- it
+# sits registered but unconnected until clicked (NetworkManager 1.54.3).
+#
+# Re-activate every autoconnect-enabled cellular profile that is down,
+# which is what NetworkManager itself would do on restart. Deliberately
+# keeping cellular off across a suspend is expressed with the persistent
+# switches -- 'nmcli radio wwan off' or autoconnect=no -- not the Mobile
+# quick-settings tile, whose effect is runtime state that a NetworkManager
+# restart would discard too.
+set -eu
+
+[ "$(nmcli -t -f WWAN radio)" = enabled ] || exit 0
+
+# ModemManager reprobes the modem from scratch on resume; the NetworkManager
+# device only becomes activatable tens of seconds later.
+i=0
+while [ "$i" -lt 60 ]; do
+    st=$(nmcli -t -f TYPE,STATE device status 2>/dev/null |
+        awk -F: '$1 == "gsm" { print $2; exit }')
+    case ${st:-} in
+    connected | connecting*) exit 0 ;;
+    disconnected) break ;;
+    esac
+    i=$((i + 1))
+    sleep 2
+done
+
+nmcli -g NAME,TYPE connection show | awk -F: '$2 == "gsm" { print $1 }' |
+    while IFS= read -r name; do
+        if [ "$(nmcli -g connection.autoconnect connection show "$name")" != yes ]; then
+            continue
+        fi
+        if nmcli -t -f NAME connection show --active | grep -qxF "$name"; then
+            continue
+        fi
+        nmcli connection up "$name" ||
+            echo "could not re-activate '$name'" >&2
+    done

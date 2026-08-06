@@ -38,6 +38,10 @@ modem is configured. Most things that look misconfigured here are not.
 - **Do not `ninja install` a locally built libqmi.** It shadows the system libqmi
   that ModemManager links against. Run `qmicli` from the build tree with
   `LD_LIBRARY_PATH`.
+- **After a resume the modem takes ~20 s to re-enumerate, and the profile can
+  come back autoconnect-blocked.** `resume-reconnect/` re-activates it; check
+  `journalctl -b -u wwan-resume-reconnect.service` before debugging anything
+  else.
 
 ## Cold boot signature
 
@@ -68,9 +72,10 @@ connected as a fallback but loses the routing decision to any working link
 
 ## Open items
 
-- Suspend/resume with the modem active is untested on BIOS 0.1.06, whose
-  changelog claims a fix for "the linux system will hung sometimes when into
-  S3 (Environment: 5G WWAN + Linux System)".
+- The NetworkManager suspend bug behind `resume-reconnect/` (sleep tears the
+  modem down as `user-requested`, which can leave the profile blocked from
+  autoconnect) is not reported upstream yet, and the exact conditions that arm
+  the block are only partially mapped — see docs/FINDINGS.md.
 - The `qmicli` patch in `patches/` is not upstream. Submitting it needs a
   gitlab.freedesktop.org fork, which needs a one-time project-limit request in
   the `freedesktop/freedesktop` issue tracker; new accounts there cannot create

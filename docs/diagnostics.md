@@ -160,6 +160,20 @@ kernel consults only the outgoing interface's own flag (`conf.all` is ignored
 for this knob), which is why the file uses a glob: systemd's udev rule
 re-applies it to each interface as it appears.
 
+## After suspend
+
+Resume kills the in-flight MBIM transactions, so ModemManager re-probes the
+modem from scratch: the Mobile tile disappears for ~20 s and the modem comes
+back under a new index. Reconnection is then either NetworkManager's own
+autoconnect or, when the profile came out of the suspend autoconnect-blocked
+(see FINDINGS), the `wwan-resume-reconnect` unit:
+
+```sh
+journalctl -b -u wwan-resume-reconnect.service
+```
+
+An 18–21 s gap from `PM: suspend exit` to connected is normal.
+
 ## Comparing against an Android phone
 
 ```sh
