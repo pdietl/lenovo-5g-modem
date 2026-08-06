@@ -67,4 +67,5 @@ Working: FCC unlock at boot and across modem power cycles, LTE and 5G data,
 IPv4 and IPv6, 5G SA on a voice+data SIM.
 
 Not solved, and not solvable here: 5G SA on a data-only eSIM. The network
-rejects the registration.
+rejects the registration, and Google Fi support confirms data-only profiles
+are provisioned NSA-only, with no 5GS/N1 registration rights, by design.

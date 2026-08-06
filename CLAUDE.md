@@ -14,8 +14,9 @@ modem is configured. Most things that look misconfigured here are not.
   `fcc-unlock/`, which calls the vendor SDK directly.
 - **Why the modem runs EN-DC instead of 5G SA on the data-only eSIM.** The
   network rejects the SA registration; the subscription is not provisioned for
-  it. A voice+data SIM registers SA on the same modem in the same place. Nothing
-  local to fix. Mode preference, acquisition order, EN-DC config and SA band
+  it. A voice+data SIM registers SA on the same modem in the same place, and
+  Google Fi support has confirmed data-only profiles carry no SA registration
+  rights, by design. Nothing local to fix. Mode preference, acquisition order, EN-DC config and SA band
   preferences are all already correct — checking them again will waste time.
 - **Whether signal or antennas are the limit.** They are not; this modem reads
   better RSRP than a Pixel 9 Pro XL sitting beside it.

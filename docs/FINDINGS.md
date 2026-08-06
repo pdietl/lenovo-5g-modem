@@ -87,6 +87,12 @@ mode. To get SA on this machine, use a voice+data line.
 A Pixel 9 Pro XL on the voice+data SIM registers `NR_SA` on n41 in the same
 place, which is what first suggested the subscription rather than the hardware.
 
+Google Fi support confirmed the conclusion (2026-08-05): data-only SIMs
+"operate on a profile that is provisioned exclusively for NSA (Non-Standalone)
+mode via EN-DC" and "do not currently carry SA core network registration
+rights". The rejection is intended behavior, not a provisioning fault worth
+escalating.
+
 ## Signal is not the limiting factor
 
 Comparing the laptop on EN-DC against the phone on SA:
