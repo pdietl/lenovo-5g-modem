@@ -149,6 +149,43 @@ and re-probes it from scratch, under a new index. Resume to connected measured
 18–21 s. Twenty s2idle suspend cycles on BIOS 1.06 (R38ET26W), from seconds to
 40 minutes with the modem active, produced no hang.
 
+## ModemManager never exits if a modem is probed while it is shutting down
+
+Stopping the daemon with a modem connected hangs it until systemd's stop
+timeout expires and kills it, so every reboot is delayed by that whole timeout.
+`systemctl stop ModemManager` reproduces it every time; no reboot needed.
+
+Disabling the connected modem kills the in-flight MBIM transactions, so the
+port stops being controllable and a fresh modem is probed mid-teardown — the
+same re-probe suspend causes, above:
+
+```
+<msg> [modem0] state changed (connected -> disabling)
+<msg> [modem0] port 'wwan0mbim0' no longer controllable, reprobing
+<wrn> [/dev/wwan0mbim0] MBIM error: Device must be open to send commands
+<msg> [device ...] creating modem with plugin 'foxconn' and '4' ports
+<wrn> shutdown failed: timeout waiting for sleep preparation to complete
+```
+
+`main()` bounds that teardown with a one-shot `MMSleepContext`, but its wait
+loop re-checks `mm_base_manager_num_modems()` after the timeout has fired and
+cleaned up its own source. The modem probed during shutdown holds that count
+above zero, so the loop re-enters `g_main_loop_run()` with nothing left that
+can ever quit it. The `disabling modems took too long` warning immediately
+past the loop is unreachable for the same reason, though it is exactly the
+path the timeout was written to take.
+
+`patches/` carries the fix — latch the expiry and test it in the loop
+condition. A daemon built with it exits by itself in ~21 s and prints that
+warning. `shutdown-hang/` ships a 10 s cap on the stop timeout instead, which
+is both simpler and faster: by the time the cap expires the daemon has already
+abandoned its teardown, and the modem is reset by the reboot anyway. Running
+the patched daemon would mean shadowing a package-managed binary that needs
+rebuilding against every libmbim and libqmi update.
+
+Nothing here is specific to this modem — any modem that re-probes during
+teardown should reach the same loop.
+
 ## Measurement traps
 
 Both of these produced confidently wrong conclusions before being caught.

@@ -76,7 +76,7 @@ connected as a fallback but loses the routing decision to any working link
   modem down as `user-requested`, which can leave the profile blocked from
   autoconnect) is not reported upstream yet, and the exact conditions that arm
   the block are only partially mapped — see docs/FINDINGS.md.
-- The `qmicli` patch in `patches/` is not upstream. Submitting it needs a
+- Neither patch in `patches/` is upstream. Submitting either needs a
   gitlab.freedesktop.org fork, which needs a one-time project-limit request in
   the `freedesktop/freedesktop` issue tracker; new accounts there cannot create
   projects. A gitlab.com fork cannot be used — merge requests do not cross GitLab

@@ -1,0 +1,61 @@
+From 9724c534dc00928f1277637c9f2b28f712f4e44d Mon Sep 17 00:00:00 2001
+From: Pete Dietl <petedietl@gmail.com>
+Date: Thu, 13 Aug 2026 20:02:44 -0500
+Subject: [PATCH] core: don't wait forever when a modem is probed during
+ shutdown
+
+The shutdown wait is bounded by a one-shot MMSleepContext timeout, but the
+loop condition is re-evaluated after it fires. A modem probed while the
+cleanup runs keeps mm_base_manager_num_modems() non-zero, so the loop
+re-enters g_main_loop_run() with no timeout source left to quit it and the
+daemon never exits; it gets SIGKILLed at the service stop timeout instead.
+
+Latch the expiry so the loop honours it. This also makes the existing
+"disabling modems took too long" warning reachable.
+
+Signed-off-by: Pete Dietl <petedietl@gmail.com>
+---
+ src/main.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/main.c b/src/main.c
+index 7d32f667..bd93323f 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -40,6 +40,7 @@
+ 
+ static GMainLoop *loop;
+ static MMBaseManager *manager;
++static gboolean shutdown_expired;
+ 
+ static gboolean
+ quit_cb (gpointer user_data)
+@@ -187,9 +188,10 @@ shutdown_done (MMSleepContext *sleep_ctx,
+                GError         *error,
+                GMainLoop      *quit_loop)
+ {
+-    if (error)
++    if (error) {
+         mm_warn ("shutdown failed: %s", error->message);
+-    else
++        shutdown_expired = TRUE;
++    } else
+         mm_msg ("shutdown complete");
+     g_main_loop_quit (quit_loop);
+ }
+@@ -282,8 +284,10 @@ main (int argc, char *argv[])
+ 
+         /* Wait for all modems to be disabled and removed, but don't wait
+          * forever: if disabling the modems takes longer than 20s, just
+-         * shutdown anyway. */
+-        while (mm_base_manager_num_modems (manager))
++         * shutdown anyway. A modem probed while the cleanup is running
++         * would otherwise keep the count above zero with no timeout left
++         * to break out of the loop. */
++        while (!shutdown_expired && mm_base_manager_num_modems (manager))
+             g_main_loop_run (inner);
+ 
+         g_signal_handler_disconnect (ctx, sleep_done_id);
+-- 
+2.53.0
+

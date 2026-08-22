@@ -27,9 +27,10 @@ There is nothing to fix locally for this. See [docs/FINDINGS.md](docs/FINDINGS.m
 | --- | --- |
 | [`fcc-unlock/`](fcc-unlock/) | FCC unlock tool, ModemManager hook, and installer. **Required** for the modem to work at all. |
 | [`gnome-extension/`](gnome-extension/) | GNOME Shell indicator showing cellular signal and access technology (`LTE` / `5G` / `5G SA`), which the built-in indicator does not. |
-| [`patches/`](patches/) | `qmicli` patch adding NR5G SA/NSA band preference setters. Needed to pin the modem to a single 5G band. |
+| [`patches/`](patches/) | `qmicli` patch adding NR5G SA/NSA band preference setters, needed to pin the modem to a single 5G band, and a ModemManager patch fixing the shutdown hang below. |
 | [`routing/`](routing/) | Fallback routing policy and installer: cellular stays connected but loses to any working link, per address family. |
 | [`resume-reconnect/`](resume-reconnect/) | Re-activates cellular after suspend; NetworkManager can leave it blocked from autoconnect. |
+| [`shutdown-hang/`](shutdown-hang/) | Bounds ModemManager's stop timeout; the daemon can fail to exit when stopped while the modem re-probes, delaying every reboot. |
 | [`docs/FINDINGS.md`](docs/FINDINGS.md) | Why the modem behaves as it does, with the measurements behind each claim. |
 | [`docs/fcc-unlock-protocol.md`](docs/fcc-unlock-protocol.md) | The unlock protocol, for replacing the vendor blob with pure `qmicli`. |
 | [`docs/diagnostics.md`](docs/diagnostics.md) | Command cookbook, and the measurement traps worth avoiding. |
@@ -67,6 +68,13 @@ autoconnecting (see [docs/FINDINGS.md](docs/FINDINGS.md)):
 
 ```sh
 cd resume-reconnect && sudo ./install.sh
+```
+
+Then the shutdown bound, without which every reboot waits out ModemManager's
+full stop timeout (see [docs/FINDINGS.md](docs/FINDINGS.md)):
+
+```sh
+cd shutdown-hang && sudo ./install.sh
 ```
 
 ## Status
