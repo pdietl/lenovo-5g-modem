@@ -186,6 +186,47 @@ rebuilding against every libmbim and libqmi update.
 Nothing here is specific to this modem — any modem that re-probes during
 teardown should reach the same loop.
 
+## A 4G-configured T16 Gen 5 has two WWAN antennas; the 5G kit is a separate FRU
+
+Lenovo's maintenance manual for this chassis (SG10856, "ThinkPad T14 Gen 7,
+T16 Gen 5, P14s Gen 7 AMD") documents four WWAN antenna positions — main,
+auxiliary, MIMO1, MIMO2 — "for selected models", with separate 4G and 5G
+illustrations for both the antenna and the card procedures, and the self-repair
+catalog for machine types 21WX/21WY lists "4G wireless WAN antennas" and "5G
+wireless WAN antennas" as distinct items. On the Gen 3 chassis iFixit's teardown
+counts two cables for LTE and four for 5G; the Gen 5 keeps that split. A laptop
+ordered with the Snapdragon X12 4G option therefore carries two antennas, not
+four.
+
+Lenovo's parts lookup against this machine's serial (a 5G build) returns the
+antenna kit as **FRU 5A30Z88318, "ANTENNA ACCY KITS NT060 WW5G ANT"**
+(commodity ANTENNA). The 14-inch sibling, 5A30Z88317 "NT040 WWAN 5G", is the
+T14 Gen 7 / P14s Gen 7 kit and does not fit. Replacing the antennas means
+removing the base cover, battery and speaker assembly; the kit is held by two
+M2.0 × 3.5 mm screws and the cables connect to the module by color label (on
+the Gen 3 chassis: orange main, blue auxiliary, white/gray MIMO1, black/gray
+MIMO2 — confirm against the module's own labels). The 4G card is M.2 3042 on a
+bracket in a 3052 slot; a 5G card (this T99W696, or a Quectel RM520N-GL) is
+3052 and uses the 5G bracket.
+
+What two cables cost an RM520N-GL, from Quectel's RM520N hardware design
+(antenna interface table): ANT0 carries the low/mid-band primary path and n41
+TX0/PRX; ANT1 the mid/ultra-high-band RX MIMO; ANT2 the n77/n78 TX0/PRX and
+n41 TX1/DRX MIMO; ANT3 the low-band diversity, n41 DRX and n77 DRX MIMO. With
+only ANT0 and ANT3 populated, LTE, n71 and n41 run at two layers (no 4×4
+MIMO) and n77/n78 have no primary path at all.
+
+As of 2026-10-06 the US configurator offered the T16 Gen 5 (AMD and Intel)
+only with "No Wireless WAN" or the X12 4G modem, while PSREF of the same date
+still listed the X61 5G and a "5G antenna ready" option — a storefront
+decision, not a platform one. The only US-orderable 5G ThinkPads were the P14s
+Gen 7 AMD and one X1 2-in-1 Gen 11 bundle, both with the X61, i.e. this same
+T99W696. Lenovo's "Enabling WWAN on Linux" table marks every 2024–2026 module,
+including the Quectel RM520N-GL on the T16 Gen 4 / T14 Gen 6, "Not available
+for USA SIM", so a Lenovo-branded RM520N-GL is no better off on Linux than the
+T99W696. A retail RM520N-GL carries no FCC lock; whether the BIOS whitelist
+accepts one is untested.
+
 ## Measurement traps
 
 Both of these produced confidently wrong conclusions before being caught.
