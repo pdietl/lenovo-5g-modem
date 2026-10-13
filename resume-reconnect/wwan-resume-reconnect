@@ -32,6 +32,13 @@ while [ "$i" -lt 60 ]; do
     sleep 2
 done
 
+# With no cellular device, 'nmcli connection up' reports its failure against
+# an unrelated device, so say what is actually wrong.
+if [ -z "${st:-}" ]; then
+    echo "no cellular device appeared" >&2
+    exit 1
+fi
+
 nmcli -g NAME,TYPE connection show | awk -F: '$2 == "gsm" { print $1 }' |
     while IFS= read -r name; do
         if [ "$(nmcli -g connection.autoconnect connection show "$name")" != yes ]; then

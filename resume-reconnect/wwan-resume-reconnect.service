@@ -3,7 +3,11 @@ Description=Re-activate cellular after resume
 After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
 
 [Service]
-Type=oneshot
+# The start job joins logind's irreversible sleep transaction, and systemd
+# refuses any reboot or poweroff while it is open; exec closes it at launch.
+Type=exec
+# Skip unless the T99W696 card (PCI 17cb:0308) is fitted.
+ExecCondition=/bin/sh -c 'grep -qs "^pci:v000017CBd00000308" /sys/bus/pci/devices/*/modalias'
 ExecStart=/usr/local/sbin/wwan-resume-reconnect
 
 [Install]

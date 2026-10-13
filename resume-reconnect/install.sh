@@ -14,8 +14,9 @@ systemctl daemon-reload
 systemctl enable wwan-resume-reconnect.service
 
 cat <<'EOF'
-Installed. After every resume, cellular profiles with autoconnect enabled are
-re-activated once the modem is usable again. To keep cellular off across
+Installed. After every resume with the modem card fitted, cellular profiles
+with autoconnect enabled are re-activated once the modem is usable again.
+Without the card the unit is skipped. To keep cellular off across
 suspends, use the persistent switches ('nmcli radio wwan off' or
 autoconnect=no); the Mobile quick-settings tile only holds until the next
 resume.
