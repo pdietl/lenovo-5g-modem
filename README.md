@@ -29,6 +29,7 @@ There is nothing to fix locally for this. See [docs/FINDINGS.md](docs/FINDINGS.m
 | [`gnome-extension/`](gnome-extension/) | GNOME Shell indicator showing cellular signal and access technology (`LTE` / `5G` / `5G SA`), which the built-in indicator does not. |
 | [`patches/`](patches/) | `qmicli` patch adding NR5G SA/NSA band preference setters, needed to pin the modem to a single 5G band, and a ModemManager patch fixing the shutdown hang below. |
 | [`routing/`](routing/) | Fallback routing policy and installer: cellular stays connected but loses to any working link, per address family. |
+| [`firewall/`](firewall/) | Drops unsolicited inbound traffic on the cellular link, which a line with a public address needs; every other interface keeps its policy. `test.sh` proves it without a cellular link. |
 | [`resume-reconnect/`](resume-reconnect/) | Re-activates cellular after suspend; NetworkManager can leave it blocked from autoconnect. |
 | [`shutdown-hang/`](shutdown-hang/) | Bounds ModemManager's stop timeout; the daemon can fail to exit when stopped while the modem re-probes, delaying every reboot. |
 | [`docs/FINDINGS.md`](docs/FINDINGS.md) | Why the modem behaves as it does, with the measurements behind each claim. |
@@ -61,6 +62,13 @@ that only carries traffic when nothing else works:
 
 ```sh
 cd routing && sudo ./install.sh
+```
+
+Then the firewall, since a line with a public IPv4 puts the machine on the
+internet with nothing in front of it:
+
+```sh
+cd firewall && sudo ./install.sh && sudo ./test.sh
 ```
 
 Then the resume hook, since suspend can leave the connection blocked from

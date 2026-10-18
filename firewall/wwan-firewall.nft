@@ -1,0 +1,34 @@
+#!/usr/sbin/nft -f
+# Drop unsolicited inbound traffic on the cellular link. A line with a static
+# public address puts this machine on the internet with nothing in front of
+# it; every other interface keeps its own policy. ufw and firewalld would set
+# a policy for every interface, and Docker's published ports bypass ufw.
+
+# Create the table if it is missing, then replace it, so loading this file is
+# idempotent and atomic.
+table inet wwan_firewall
+delete table inet wwan_firewall
+
+table inet wwan_firewall {
+	chain input {
+		type filter hook input priority filter; policy accept;
+		iifname != "wwan*" accept
+		ct state established,related accept
+		ct state invalid drop
+		# Errors that path MTU discovery and failing connections rely on, and
+		# IPv6 neighbor discovery.
+		icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+		icmpv6 type { destination-unreachable, packet-too-big, time-exceeded,
+			parameter-problem, nd-router-advert, nd-neighbor-solicit,
+			nd-neighbor-advert } accept
+		counter drop comment "unsolicited inbound on cellular"
+	}
+
+	# A published container port reaches its container through forwarding,
+	# never this host's input chain.
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		iifname "wwan*" ct state established,related accept
+		iifname "wwan*" counter drop comment "unsolicited forward from cellular"
+	}
+}
