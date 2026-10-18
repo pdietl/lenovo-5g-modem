@@ -2,7 +2,9 @@
 
 Machine: ThinkPad T16 Gen 5 (`21WXCTO1WW`), Ubuntu 26.04, kernel 7.0, GNOME 50.1.
 Modem: Foxconn T99W696 (Qualcomm SDX62), PCI `17cb:0308`, MBIM over PCIe/MHI at
-`/dev/wwan0mbim0`. Carrier: Google Fi, APN `h2g2`.
+`/dev/wwan0mbim0`. Carrier: T-Mobile, a business line with a static public IPv4
+(`firewall/` drops unsolicited inbound on it), APN `fast.t-mobile.com`. The
+Google Fi findings below were measured on a Fi eSIM.
 
 Read [docs/FINDINGS.md](docs/FINDINGS.md) before proposing any change to how the
 modem is configured. Most things that look misconfigured here are not.

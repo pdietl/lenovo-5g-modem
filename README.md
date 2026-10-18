@@ -4,7 +4,8 @@ Getting the Foxconn T99W696 5G modem in a ThinkPad T16 Gen 5 working on Linux,
 and understanding what it does once it works.
 
 Hardware: Foxconn T99W696 (Qualcomm SDX62), PCI `17cb:0308`, MBIM over PCIe/MHI.
-Carrier: Google Fi. Verified on Ubuntu 26.04, kernel 7.0, ModemManager 1.25.95.
+Carrier: T-Mobile, a business line with a static IPv4; the Google Fi findings
+below were measured on a Fi eSIM. Verified on Ubuntu 26.04, kernel 7.0, ModemManager 1.25.95.
 
 ## The two things that matter
 
@@ -47,10 +48,10 @@ That builds the unlock helper, installs it, and installs the ModemManager hook
 that runs it whenever the modem powers on. The unlock is volatile and must be
 redone on every modem power-on, which is what the hook is for.
 
-Then create a connection. Google Fi's APN is `h2g2`:
+Then create a connection. T-Mobile's APN is `fast.t-mobile.com`:
 
 ```sh
-nmcli connection add type gsm ifname '*' con-name 'Google Fi' gsm.apn h2g2
+nmcli connection add type gsm ifname '*' con-name 'T-Mobile' gsm.apn fast.t-mobile.com
 ```
 
 `ifname '*'` and leaving `gsm.sim-id` unset matter: NetworkManager otherwise pins

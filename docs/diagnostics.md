@@ -94,8 +94,33 @@ slot switch the profile then refuses the new SIM with "device has differing
 sim-id than GSM profile". Clear it so one profile serves both:
 
 ```sh
-nmcli connection modify 'Google Fi' gsm.sim-id ''
+nmcli connection modify 'T-Mobile' gsm.sim-id ''
 ```
+
+## eSIM profiles
+
+The eUICC is managed with [lpac](https://github.com/estkme-group/lpac) over
+MBIM, through ModemManager's proxy so the daemon keeps its port. Ubuntu does not
+package it; nixpkgs builds it with MBIM support:
+
+```sh
+nix shell nixpkgs#lpac
+export LPAC_APDU=mbim LPAC_APDU_MBIM_DEVICE=/dev/wwan0mbim0 \
+       LPAC_APDU_MBIM_USE_PROXY=1 LPAC_APDU_MBIM_UIM_SLOT=2
+sudo -E lpac chip info                        # EID, free memory
+sudo -E lpac profile list
+sudo -E lpac profile download -s <SM-DP+ host> -i <IMEI>   # address-only order
+sudo -E lpac profile enable <ICCID>
+sudo -E lpac notification process -a -r       # tell the SM-DP+, then clear
+```
+
+Slot 2 is the eUICC; on slot 1, the tray, lpac fails and then segfaults.
+
+After `profile disable` the modem keeps the old IMSI and registers on it, and
+lpac then fails on most calls with `SelectFailed`. `mmcli -m any --reset`
+gives it a fresh SIM session. With no profile enabled ModemManager reports the
+modem `failed` with reason `esim-without-profiles`, which is expected; enabling
+a profile and resetting the modem brings it back.
 
 ## Carrier configs
 
@@ -134,7 +159,7 @@ default path whenever anything else works.
 
 ## Routing policy: cellular stays up, carries traffic last
 
-The `Google Fi` profile autoconnects and stays connected; route metrics decide
+The `T-Mobile` profile autoconnects and stays connected; route metrics decide
 what actually carries traffic. `routing/install.sh` applies everything in this
 section.
 
