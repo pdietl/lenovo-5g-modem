@@ -38,33 +38,44 @@ cleanup() {
         timeout 15 tail --pid="$p" -f /dev/null
         kill -9 "$p" 2>/dev/null
     done
+    if [ -n "${BUSDIR:-}" ]; then
+        rm -f "$BUSDIR/bus"
+        rmdir "$BUSDIR"
+    fi
 }
 trap cleanup EXIT
+trap 'exit 3' INT TERM
 
-BUSNAME=mm-suspend-during-probe-$$
+# A root-only directory, not an abstract socket: those have no permissions, so
+# any local user could reach this root daemon's bus, or bind its name first.
+BUSDIR=$(mktemp -d /run/mm-suspend-test.XXXXXX) || exit 3
+chmod 700 "$BUSDIR" || exit 3
 cat > "$OUT/bus.conf" <<EOF
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
   <type>system</type>
-  <listen>unix:abstract=$BUSNAME</listen>
+  <listen>unix:path=$BUSDIR/bus</listen>
   <auth>EXTERNAL</auth>
   <policy context="default">
-    <allow user="*"/>
+    <allow user="root"/>
     <allow own="*"/>
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
+    <allow send_type="*"/>
+    <allow receive_type="*"/>
   </policy>
 </busconfig>
 EOF
 
 dbus-daemon --config-file="$OUT/bus.conf" --nofork --nopidfile \
     > "$OUT/bus.log" 2>&1 &
-PIDS+=($!)
-export DBUS_SYSTEM_BUS_ADDRESS=unix:abstract=$BUSNAME
+BUSPID=$!
+PIDS+=("$BUSPID")
+export DBUS_SYSTEM_BUS_ADDRESS=unix:path=$BUSDIR/bus
 bus_up() {
-    gdbus call --system -d org.freedesktop.DBus -o /org/freedesktop/DBus \
-        -m org.freedesktop.DBus.GetId > /dev/null 2>&1
+    kill -0 "$BUSPID" 2> /dev/null &&
+        gdbus call --system --timeout 2 -d org.freedesktop.DBus \
+            -o /org/freedesktop/DBus -m org.freedesktop.DBus.GetId \
+            > /dev/null 2>&1
 }
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     bus_up && break
