@@ -44,6 +44,11 @@ modem is configured. Most things that look misconfigured here are not.
   come back autoconnect-blocked.** `resume-reconnect/` re-activates it; check
   `journalctl -b -u wwan-resume-reconnect.service` before debugging anything
   else.
+- **`no cellular device appeared` from that unit means the modem is gone, not
+  blocked.** A suspend landed during modem setup (a lid-closed boot does it),
+  and an unpatched ModemManager never re-probes it. Re-probe with the
+  `udevadm trigger` in docs/diagnostics.md; `mmcli --scan-modems` fails after
+  any suspend on the archive's 1.25.95.
 
 ## Cold boot signature
 
@@ -78,7 +83,10 @@ connected as a fallback but loses the routing decision to any working link
   modem down as `user-requested`, which can leave the profile blocked from
   autoconnect) is not reported upstream yet, and the exact conditions that arm
   the block are only partially mapped — see docs/FINDINGS.md.
-- Neither patch in `patches/` is upstream. Submitting either needs a
+- The ModemManager patches in `patches/` are not deployed here; running them
+  means rebuilding the distro package. Until then a suspend during modem setup
+  still loses the modem.
+- None of the patches in `patches/` is upstream. Submitting them needs a
   gitlab.freedesktop.org fork, which needs a one-time project-limit request in
   the `freedesktop/freedesktop` issue tracker; new accounts there cannot create
   projects. A gitlab.com fork cannot be used — merge requests do not cross GitLab

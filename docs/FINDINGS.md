@@ -143,11 +143,65 @@ conditions: after every resume it waits out the modem re-probe and
 re-activates any autoconnect-enabled cellular profile still down; when
 NetworkManager autoconnects by itself, it sees that and exits without acting.
 
-Separately, the Mobile tile is absent for ~20 s after every resume: suspend
-kills the in-flight MBIM transactions, so ModemManager declares the modem gone
-and re-probes it from scratch, under a new index. Resume to connected measured
-18–21 s. Twenty s2idle suspend cycles on BIOS 1.06 (R38ET26W), from seconds to
-40 minutes with the modem active, produced no hang.
+Separately, the Mobile tile is absent for ~20 s after every resume:
+ModemManager disables and removes the modem before every sleep and rescans on
+resume, so the modem is probed from scratch, under a new index. Resume to
+connected measured 18–21 s. Twenty s2idle suspend cycles on BIOS 1.06
+(R38ET26W), from seconds to 40 minutes with the modem active, produced no hang.
+
+## A suspend during modem setup loses the modem until the next resume
+
+Booting with the lid closed loses the modem. logind suspends at the login
+screen within seconds, while ModemManager is still setting the modem up (about
+15 s from probe to `disabled`), and after the resume there is no modem at all:
+`mmcli -L` finds none, the Mobile tile is gone, and `wwan-resume-reconnect`
+gives up with `no cellular device appeared`. Seen on 2026-11-13 and
+2026-11-18, both lid-closed boots; any suspend inside the setup window does the
+same.
+
+From the suspend on:
+
+```
+<msg> [modem0/wwan0mbim0/mbim] MBIM device is QMI capable
+<msg> [sleep-monitor-systemd] system is about to suspend
+<wrn> [sleep-monitor-systemd] sleep context failed: timeout waiting for sleep preparation to complete
+<msg> [sleep-monitor-systemd] system is resuming
+<msg> [modem0] state changed (unknown -> disabled)
+<msg> [modem0] power state updated: low
+<wrn> [/dev/wwan0mbim0] MBIM error: Transaction timed out     (six of these)
+```
+
+and then nothing: no `probe step` lines and no `creating modem with plugin
+'foxconn'`, which a healthy resume logs about 2 s after `system is resuming`.
+
+Before every sleep ModemManager disables the modem, sets it to low power and
+removes it. The disable waits for the setup in progress, so the 5 s
+sleep-preparation timeout expires and the system suspends with the removal
+still pending. On resume the rescan runs at once, finds the ports still owned
+by a device that has a modem, and skips them (`ignoring port wwan0mbim0 as
+device ... already has a valid modem`, at debug level). The pending cleanup
+then finishes and removes that device. The ports never went away, so no udev
+event follows, and nothing looks at them again until the next suspend or a
+daemon restart. [diagnostics.md](diagnostics.md#after-suspend) has the
+command that re-probes them in place.
+
+`mmcli --scan-modems` cannot recover it: ModemManager 1.25.95 cancels the
+manager's authorization handle on every sleep and never replaces it, so after
+the first suspend every authorized manager call (scan, log level, inhibit)
+fails with `Operation was cancelled` until the daemon restarts. Upstream fixed
+that in `f994d606`, not yet in a release.
+
+`patches/` carries the fix: a scan requested while a cleanup that removes
+devices is still running waits until that cleanup completes. Two defects on
+the same path are fixed with it. The cleanup removed only the last of its
+devices from the device table, leaving the rest behind (here the Wi-Fi and
+Ethernet devices, which no plugin supports). And the late cleanup completed an
+already timed-out sleep context a second time, a GLib critical that the
+packaged unit discards with the rest of stderr.
+`patches/test-suspend-during-probe.sh` reproduces the race without suspending,
+by driving the daemon from a mocked logind on a private bus: the packaged
+1.25.95 daemon loses the modem and the patched one gets it back. Its `settled`
+mode checks that an ordinary suspend still rescans at once.
 
 ## ModemManager never exits if a modem is probed while it is shutting down
 
@@ -156,8 +210,7 @@ timeout expires and kills it, so every reboot is delayed by that whole timeout.
 `systemctl stop ModemManager` reproduces it every time; no reboot needed.
 
 Disabling the connected modem kills the in-flight MBIM transactions, so the
-port stops being controllable and a fresh modem is probed mid-teardown — the
-same re-probe suspend causes, above:
+port stops being controllable and a fresh modem is probed mid-teardown:
 
 ```
 <msg> [modem0] state changed (connected -> disabling)

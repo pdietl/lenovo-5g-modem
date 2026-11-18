@@ -1,0 +1,61 @@
+From 04b9ee32990d727c8bddb96094c40e35e571cf1b Mon Sep 17 00:00:00 2001
+From: Pete Dietl <petedietl@gmail.com>
+Date: Wed, 18 Nov 2026 11:31:32 -0600
+Subject: [PATCH 3/4] base-manager: remove every cleaned-up device, not only
+ the last one
+
+The loop that removes devices once a cleanup completes looked up each
+entry by the uid of the device whose task finished last, instead of the
+entry being visited. Only that one device left the table; every other
+device that was cleaned up stayed in it.
+
+The device with the modem usually finishes last, because devices without
+a modem have no steps to run, so modems were removed and the stale
+entries were the devices whose ports no plugin supports. A system with
+two modems would keep one of them in the table after a cleanup.
+
+Visiting each entry means dereferencing it after its cleanup task has
+been released, so hold a reference while it waits for removal, and only
+remove the table entry if it still maps to that device: it may have been
+removed, or replaced under the same uid, in the meantime.
+
+Signed-off-by: Pete Dietl <petedietl@gmail.com>
+---
+ src/mm-base-manager.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/src/mm-base-manager.c b/src/mm-base-manager.c
+index d7325c6b..fa8bf038 100644
+--- a/src/mm-base-manager.c
++++ b/src/mm-base-manager.c
+@@ -1136,7 +1136,7 @@ manager_cleanup_context_maybe_complete (ManagerCleanupContext *ctx,
+ 
+     if (remove) {
+         g_assert (device);
+-        ctx->devices_to_remove = g_slist_append (ctx->devices_to_remove, device);
++        ctx->devices_to_remove = g_slist_append (ctx->devices_to_remove, g_object_ref (device));
+     }
+ 
+     if (ctx->tasks == NULL) {
+@@ -1146,9 +1146,15 @@ manager_cleanup_context_maybe_complete (ManagerCleanupContext *ctx,
+          * during iteration, in case a device has no modem and the steps
+          * all fall through.
+          */
+-        for (iter = ctx->devices_to_remove; iter; iter = iter->next)
+-            g_hash_table_remove (ctx->self->priv->devices, mm_device_get_uid (device));
+-        g_slist_free (ctx->devices_to_remove);
++        for (iter = ctx->devices_to_remove; iter; iter = iter->next) {
++            MMDevice    *removed = MM_DEVICE (iter->data);
++            const gchar *uid = mm_device_get_uid (removed);
++
++            /* The device may have been removed, or replaced under the same uid */
++            if (g_hash_table_lookup (ctx->self->priv->devices, uid) == removed)
++                g_hash_table_remove (ctx->self->priv->devices, uid);
++        }
++        g_slist_free_full (ctx->devices_to_remove, g_object_unref);
+ 
+         mm_obj_dbg (ctx->self, "cleanup complete");
+         mm_sleep_context_complete (ctx->sleep_ctx, NULL);
+-- 
+2.53.0
+

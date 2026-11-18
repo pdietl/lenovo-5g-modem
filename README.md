@@ -28,7 +28,7 @@ There is nothing to fix locally for this. See [docs/FINDINGS.md](docs/FINDINGS.m
 | --- | --- |
 | [`fcc-unlock/`](fcc-unlock/) | FCC unlock tool, ModemManager hook, and installer. **Required** for the modem to work at all. |
 | [`gnome-extension/`](gnome-extension/) | GNOME Shell indicator showing cellular signal and access technology (`LTE` / `5G` / `5G SA`), which the built-in indicator does not. |
-| [`patches/`](patches/) | `qmicli` patch adding NR5G SA/NSA band preference setters, needed to pin the modem to a single 5G band, and a ModemManager patch fixing the shutdown hang below. |
+| [`patches/`](patches/) | `qmicli` patch adding NR5G SA/NSA band preference setters, needed to pin the modem to a single 5G band, and ModemManager patches fixing the shutdown hang below and the modem lost to a suspend during modem setup (see [docs/FINDINGS.md](docs/FINDINGS.md)). `test-suspend-during-probe.sh` reproduces the latter without suspending. |
 | [`routing/`](routing/) | Fallback routing policy and installer: cellular stays connected but loses to any working link, per address family. |
 | [`firewall/`](firewall/) | Drops unsolicited inbound traffic on the cellular link, which a line with a public address needs; every other interface keeps its policy. `test.sh` proves it without a cellular link. |
 | [`resume-reconnect/`](resume-reconnect/) | Re-activates cellular after suspend; NetworkManager can leave it blocked from autoconnect. |

@@ -1,0 +1,43 @@
+From 8c34e362aaf02287e0f3fb2223f40de109b40a8b Mon Sep 17 00:00:00 2001
+From: Pete Dietl <petedietl@gmail.com>
+Date: Wed, 18 Nov 2026 11:31:51 -0600
+Subject: [PATCH 4/4] sleep-context: ignore completion after the timeout has
+ fired
+
+When sleep preparation takes longer than the timeout, the timeout
+completes the context and clears its task, but the cleanup it was
+waiting for still finishes later and completes the context again. That
+second call hands a NULL task to g_task_return_boolean() and logs:
+
+  GLib-GIO-CRITICAL **: g_task_return_boolean: assertion
+  'G_IS_TASK (task)' failed
+
+Treat completion of an already completed context as a no-op.
+
+Signed-off-by: Pete Dietl <petedietl@gmail.com>
+---
+ src/mm-sleep-context.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/mm-sleep-context.c b/src/mm-sleep-context.c
+index d6c01198..78bb2720 100644
+--- a/src/mm-sleep-context.c
++++ b/src/mm-sleep-context.c
+@@ -62,6 +62,14 @@ mm_sleep_context_complete (MMSleepContext *self,
+ {
+     timeout_cleanup (self);
+ 
++    /* The timeout completes the context without waiting for the operation,
++     * which may then finish and complete it again */
++    if (!self->priv->task) {
++        mm_obj_dbg (self, "already completed");
++        g_clear_error (&error);
++        return;
++    }
++
+     if (error) {
+         mm_obj_dbg (self, "completing with error '%s'", error->message);
+         g_task_return_error (self->priv->task, error);
+-- 
+2.53.0
+

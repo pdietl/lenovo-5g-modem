@@ -1,0 +1,124 @@
+From ca3217b820b5e9f7738a34afb78a17d1b4ff2e03 Mon Sep 17 00:00:00 2001
+From: Pete Dietl <petedietl@gmail.com>
+Date: Wed, 18 Nov 2026 11:31:23 -0600
+Subject: [PATCH 2/4] base-manager: defer device scans until a removing cleanup
+ completes
+
+If the system suspends while a modem is still being initialized, the
+sleep cleanup cannot disable it until initialization finishes, so the
+sleep context times out and the system suspends with the cleanup still
+pending. On resume the rescan runs at once, finds the ports still owned
+by a device with a valid modem, and skips them. The cleanup then
+completes and removes that device. No udev event follows, because the
+ports never went away, so nothing probes them again and the modem stays
+gone until the next suspend or a daemon restart.
+
+Booting with the lid closed is enough to hit this: logind suspends at
+the greeter within seconds, while the modem is still initializing.
+
+Track the cleanups that remove devices, and run a scan requested while
+any of them is pending once the last one has completed. A new removing
+cleanup supersedes a scan deferred by an earlier one, since whoever
+needs the devices back after it requests a new scan.
+
+Signed-off-by: Pete Dietl <petedietl@gmail.com>
+---
+ src/mm-base-manager.c | 44 +++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 42 insertions(+), 2 deletions(-)
+
+diff --git a/src/mm-base-manager.c b/src/mm-base-manager.c
+index 7ba2cdec..d7325c6b 100644
+--- a/src/mm-base-manager.c
++++ b/src/mm-base-manager.c
+@@ -111,6 +111,11 @@ struct _MMBaseManagerPrivate {
+     GDBusObjectManagerServer *object_manager;
+     /* The map of inhibited devices */
+     GHashTable *inhibited_devices;
++    /* Cleanups removing devices that have not completed yet */
++    guint n_removing_cleanups;
++    /* Device scan requested while one of those was running */
++    gboolean scan_deferred;
++    gboolean scan_deferred_manual;
+ 
+ #if defined WITH_TESTS
+     /* Whether the test interface is enabled */
+@@ -853,6 +858,16 @@ mm_base_manager_start (MMBaseManager *self,
+     g_return_if_fail (self != NULL);
+     g_return_if_fail (MM_IS_BASE_MANAGER (self));
+ 
++    /* A device still being cleaned up keeps its ports, so a scan now would skip
++     * them, and nothing scans them again once the cleanup removes the device. */
++    if (self->priv->n_removing_cleanups) {
++        mm_obj_dbg (self, "deferring %s device scan until device cleanup completes",
++                    manual_scan ? "manual" : "automatic");
++        self->priv->scan_deferred = TRUE;
++        self->priv->scan_deferred_manual = self->priv->scan_deferred_manual || manual_scan;
++        return;
++    }
++
+     if (!self->priv->auto_scan && !manual_scan) {
+         /* If we have a list of initial kernel events, process it now */
+         process_initial_kernel_events (self);
+@@ -1086,17 +1101,27 @@ typedef struct {
+     GSList         *tasks;
+     GSList         *devices_to_remove;
+     MMSleepContext *sleep_ctx;
++    gboolean        remove;
+ } ManagerCleanupContext;
+ 
+ static ManagerCleanupContext *
+ manager_cleanup_context_new (MMBaseManager  *self,
+-                             MMSleepContext *sleep_ctx)
++                             MMSleepContext *sleep_ctx,
++                             gboolean        remove)
+ {
+     ManagerCleanupContext *ctx;
+ 
+     ctx = g_slice_new0 (ManagerCleanupContext);
+     ctx->self = g_object_ref (self);
+     ctx->sleep_ctx = g_object_ref (sleep_ctx);
++    ctx->remove = remove;
++    if (remove) {
++        /* A scan deferred by an earlier cleanup is superseded: whoever needs
++         * the devices back after this one requests a new scan */
++        self->priv->n_removing_cleanups++;
++        self->priv->scan_deferred = FALSE;
++        self->priv->scan_deferred_manual = FALSE;
++    }
+     return ctx;
+ }
+ 
+@@ -1128,6 +1153,21 @@ manager_cleanup_context_maybe_complete (ManagerCleanupContext *ctx,
+         mm_obj_dbg (ctx->self, "cleanup complete");
+         mm_sleep_context_complete (ctx->sleep_ctx, NULL);
+ 
++        if (ctx->remove) {
++            MMBaseManagerPrivate *priv = ctx->self->priv;
++
++            g_assert (priv->n_removing_cleanups > 0);
++            priv->n_removing_cleanups--;
++            if (!priv->n_removing_cleanups && priv->scan_deferred) {
++                gboolean manual_scan = priv->scan_deferred_manual;
++
++                priv->scan_deferred = FALSE;
++                priv->scan_deferred_manual = FALSE;
++                mm_obj_dbg (ctx->self, "running deferred device scan");
++                mm_base_manager_start (ctx->self, manual_scan);
++            }
++        }
++
+         g_object_unref (ctx->sleep_ctx);
+         g_object_unref (ctx->self);
+         g_slice_free (ManagerCleanupContext, ctx);
+@@ -1189,7 +1229,7 @@ mm_base_manager_cleanup (MMBaseManager             *self,
+                 (remove && terse) ? "," : "",
+                 terse ? "terse" : "");
+ 
+-    ctx = manager_cleanup_context_new (self, sleep_ctx);
++    ctx = manager_cleanup_context_new (self, sleep_ctx, remove);
+ 
+     g_hash_table_iter_init (&iter, self->priv->devices);
+     while (g_hash_table_iter_next (&iter, NULL, (gpointer) &device)) {
+-- 
+2.53.0
+

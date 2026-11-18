@@ -187,17 +187,31 @@ re-applies it to each interface as it appears.
 
 ## After suspend
 
-Resume kills the in-flight MBIM transactions, so ModemManager re-probes the
-modem from scratch: the Mobile tile disappears for ~20 s and the modem comes
-back under a new index. Reconnection is then either NetworkManager's own
-autoconnect or, when the profile came out of the suspend autoconnect-blocked
-(see FINDINGS), the `wwan-resume-reconnect` unit:
+ModemManager removes the modem before every sleep and probes it from scratch on
+resume: the Mobile tile disappears for ~20 s and the modem comes back under a
+new index. Reconnection is then either NetworkManager's own autoconnect or,
+when the profile came out of the suspend autoconnect-blocked (see FINDINGS),
+the `wwan-resume-reconnect` unit:
 
 ```sh
 journalctl -b -u wwan-resume-reconnect.service
 ```
 
 An 18–21 s gap from `PM: suspend exit` to connected is normal.
+
+If the unit instead logs `no cellular device appeared` and `mmcli -L` finds no
+modem, the suspend landed while ModemManager was still setting the modem up,
+and it will not look at the modem again by itself (see FINDINGS). A `change`
+event on the modem's ports makes it re-probe them, and NetworkManager
+reconnects about 15 s later:
+
+```sh
+sudo udevadm trigger --action=change /sys/class/wwan/wwan0qcdm0 \
+    /sys/class/wwan/wwan0mbim0 /sys/class/wwan/wwan0at0 /sys/class/net/wwan0
+```
+
+`mmcli --scan-modems` fails with `Operation was cancelled` after any suspend
+on ModemManager 1.25.95, so it is no alternative.
 
 ## Comparing against an Android phone
 
