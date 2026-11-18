@@ -90,7 +90,8 @@ connected as a fallback but loses the routing decision to any working link
   against the new version, or check its changelog carries them. With
   `install-guard.sh` installed, `journalctl -t modemmanager-guard` says so.
 - The `qmicli` patch is merged in libqmi main (`7536d3a9`) but not yet in a
-  release. The suspend-during-setup series (patches 0002-0004) is in review as
+  release. qmicli's EARFCN table gains bands 45 to 54 in
+  mobile-broadband/libqmi!488, in review. The suspend-during-setup series (patches 0002-0004) is in review as
   mobile-broadband/ModemManager!1528 on gitlab.freedesktop.org, from the
   `pdietl/ModemManager` fork; review changes go in as fixups and a force-push.
   The shutdown-hang patch (0001) is not submitted yet.
