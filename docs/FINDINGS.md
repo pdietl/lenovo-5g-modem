@@ -174,10 +174,13 @@ From the suspend on:
 and then nothing: no `probe step` lines and no `creating modem with plugin
 'foxconn'`, which a healthy resume logs about 2 s after `system is resuming`.
 
-Before every sleep ModemManager disables the modem, sets it to low power and
-removes it. The disable waits for the setup in progress, so the 5 s
-sleep-preparation timeout expires and the system suspends with the removal
-still pending. On resume the rescan runs at once, finds the ports still owned
+With `--test-low-power-suspend-resume`, which `shutdown-hang/`'s drop-in
+passes, ModemManager disables the modem before every sleep, sets it to low
+power and removes it. Without the flag it only removes the modem, which does
+not wait for setup, so a suspend during setup is harmless (checked with the
+test below, minus the flag). The disable waits for the setup in progress, so
+the 5 s sleep-preparation timeout expires and the system suspends with the
+removal still pending. On resume the rescan runs at once, finds the ports still owned
 by a device that has a modem, and skips them (`ignoring port wwan0mbim0 as
 device ... already has a valid modem`, at debug level). The pending cleanup
 then finishes and removes that device. The ports never went away, so no udev

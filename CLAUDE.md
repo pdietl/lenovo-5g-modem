@@ -46,7 +46,8 @@ modem is configured. Most things that look misconfigured here are not.
   else.
 - **`no cellular device appeared` from that unit means the modem is gone, not
   blocked.** A suspend landed during modem setup (a lid-closed boot does it),
-  and an unpatched ModemManager never re-probes it. Re-probe with the
+  and an unpatched ModemManager running `--test-low-power-suspend-resume` (the
+  `shutdown-hang/` drop-in sets it) never re-probes it. Re-probe with the
   `udevadm trigger` in docs/diagnostics.md; `mmcli --scan-modems` fails after
   any suspend on the archive's 1.25.95.
 
