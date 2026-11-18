@@ -88,11 +88,11 @@ connected as a fallback but loses the routing decision to any working link
   upgrade to a newer archive version replaces it and drops the fixes; rebuild
   against the new version, or check its changelog carries them. With
   `install-guard.sh` installed, `journalctl -t modemmanager-guard` says so.
-- None of the patches in `patches/` is upstream. Submitting them needs a
-  gitlab.freedesktop.org fork, which needs a one-time project-limit request in
-  the `freedesktop/freedesktop` issue tracker; new accounts there cannot create
-  projects. A gitlab.com fork cannot be used — merge requests do not cross GitLab
-  instances, and the CI config resolves `freedesktop/ci-templates` only on the
-  freedesktop instance.
+- The `qmicli` patch is merged in libqmi main (`7536d3a9`) but not yet in a
+  release. The ModemManager patches are not upstream. The account already has
+  a gitlab.freedesktop.org fork of libqmi, so it can fork ModemManager there
+  too; a gitlab.com fork cannot be used, because merge requests do not cross
+  GitLab instances and the CI config resolves `freedesktop/ci-templates` only
+  on the freedesktop instance.
 - Replacing the vendor blob with pure `qmicli` needs a QMI service `0xE4`
   definition in libqmi; see docs/fcc-unlock-protocol.md.
