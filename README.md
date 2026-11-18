@@ -29,6 +29,7 @@ There is nothing to fix locally for this. See [docs/FINDINGS.md](docs/FINDINGS.m
 | [`fcc-unlock/`](fcc-unlock/) | FCC unlock tool, ModemManager hook, and installer. **Required** for the modem to work at all. |
 | [`gnome-extension/`](gnome-extension/) | GNOME Shell indicator showing cellular signal and access technology (`LTE` / `5G` / `5G SA`), which the built-in indicator does not. |
 | [`patches/`](patches/) | `qmicli` patch adding NR5G SA/NSA band preference setters, needed to pin the modem to a single 5G band, and ModemManager patches fixing the shutdown hang below and the modem lost to a suspend during modem setup (see [docs/FINDINGS.md](docs/FINDINGS.md)). `test-suspend-during-probe.sh` reproduces the latter without suspending. |
+| [`modemmanager-package/`](modemmanager-package/) | Rebuilds Ubuntu's ModemManager package with the ModemManager patches and an unreleased upstream fix, and prints the install and offline-rollback commands. `install-guard.sh` adds an apt hook that warns once an upgrade has replaced the rebuild. |
 | [`routing/`](routing/) | Fallback routing policy and installer: cellular stays connected but loses to any working link, per address family. |
 | [`firewall/`](firewall/) | Drops unsolicited inbound traffic on the cellular link, which a line with a public address needs; every other interface keeps its policy. `test.sh` proves it without a cellular link. |
 | [`resume-reconnect/`](resume-reconnect/) | Re-activates cellular after suspend; NetworkManager can leave it blocked from autoconnect. |
@@ -84,6 +85,16 @@ full stop timeout (see [docs/FINDINGS.md](docs/FINDINGS.md)):
 
 ```sh
 cd shutdown-hang && sudo ./install.sh
+```
+
+Optionally, the patched ModemManager, without which a suspend that lands while
+the modem is being set up (booting with the lid closed does it) loses the modem
+until the next resume. The build prints the commands to install it and to roll
+it back; the guard warns after any upgrade that replaces it:
+
+```sh
+sudo apt-get build-dep modemmanager && modemmanager-package/build
+sudo modemmanager-package/install-guard.sh
 ```
 
 ## Status

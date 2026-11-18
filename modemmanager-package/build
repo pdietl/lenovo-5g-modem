@@ -1,0 +1,138 @@
+#!/bin/bash
+set -euo pipefail
+
+# Rebuild Ubuntu's ModemManager with this repo's ModemManager patches, so the
+# modem survives a suspend that lands while it is being set up and the daemon
+# exits promptly when stopped (see docs/FINDINGS.md).
+#
+# upstream/ holds fixes already merged upstream but not yet released; they go
+# first, in upstream order, then ../patches in series order. All of them are
+# applied to exactly UBUNTU_VERSION, so the result differs from the archive
+# package by these patches alone. dpkg-source applies them with fuzz disabled,
+# so a patch whose context no longer matches fails the build instead of
+# landing somewhere it changes what the code does.
+#
+# The local version sorts after UBUNTU_VERSION and before any later archive
+# upload, so the next Ubuntu ModemManager replaces this build on an ordinary
+# upgrade. Check that upgrade still carries the fix before trusting it:
+#   zcat /usr/share/doc/modemmanager/changelog.Debian.gz | grep -c 'removing cleanup'
+#
+# usage: build [workdir]
+#   workdir must not exist; default ~/.cache/lenovo-5g-modem/modemmanager-<version>
+# Needs deb-src for the Ubuntu archive and `sudo apt-get build-dep modemmanager`.
+# Installs nothing. It also downloads the archive packages it replaces into
+# workdir/original, so a rollback does not depend on the archive, and ends by
+# printing the install and rollback commands.
+
+declare -r UBUNTU_VERSION=1.25.95-1ubuntu1
+declare -r LOCAL_VERSION=${UBUNTU_VERSION}+pdietl1
+declare -r PATCH_SUBDIR=lenovo-5g-modem
+
+HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+WORK=${1:-$HOME/.cache/lenovo-5g-modem/modemmanager-$LOCAL_VERSION}
+
+if [ -e "$WORK" ]; then
+    echo "refusing to reuse $WORK; pass a directory that does not exist" >&2
+    exit 1
+fi
+
+shopt -s nullglob
+upstream=("$HERE"/upstream/*.patch)
+ours=("$HERE"/../patches/[0-9]*-modemmanager-*.patch)
+shopt -u nullglob
+if [ ${#ours[@]} -eq 0 ]; then
+    echo "no ModemManager patches found in $HERE/../patches" >&2
+    exit 1
+fi
+patches=("${upstream[@]}" "${ours[@]}")
+
+name=$(git -C "$HERE" config --get user.name) || true
+email=$(git -C "$HERE" config --get user.email) || true
+if [ -z "$name" ] || [ -z "$email" ]; then
+    echo "git user.name and user.email are needed for the changelog" >&2
+    exit 1
+fi
+
+mkdir -p "$WORK"
+cd "$WORK"
+apt-get source "modemmanager=$UBUNTU_VERSION"
+cd "modemmanager-${UBUNTU_VERSION%%-*}"
+
+got=$(dpkg-parsechangelog -S Version)
+if [ "$got" != "$UBUNTU_VERSION" ]; then
+    echo "unpacked modemmanager $got, expected $UBUNTU_VERSION" >&2
+    exit 1
+fi
+
+# Both sets number from 0001, so keep each set in its own directory.
+mkdir -p "debian/patches/$PATCH_SUBDIR/upstream"
+touch debian/patches/series
+for p in "${upstream[@]}"; do
+    cp "$p" "debian/patches/$PATCH_SUBDIR/upstream/"
+    echo "$PATCH_SUBDIR/upstream/$(basename "$p")" >> debian/patches/series
+done
+for p in "${ours[@]}"; do
+    cp "$p" "debian/patches/$PATCH_SUBDIR/"
+    echo "$PATCH_SUBDIR/$(basename "$p")" >> debian/patches/series
+done
+
+# A format-patch Subject header folds long titles onto continuation lines.
+subject() {
+    awk '/^Subject: /{s=substr($0,10); while ((getline l) > 0 && l ~ /^ /) s=s l;
+         sub(/^\[PATCH[^]]*\] /,"",s); print s; exit}' "$1"
+}
+
+{
+    printf 'modemmanager (%s) %s; urgency=medium\n\n' \
+        "$LOCAL_VERSION" "$(dpkg-parsechangelog -S Distribution)"
+    printf '  * Keep the modem when the system suspends while it is being set up,\n'
+    printf '    and let the daemon exit when stopped while a modem is probed:\n'
+    for p in "${patches[@]}"; do
+        printf '    - %s\n' "$(subject "$p")"
+    done
+    printf '\n -- %s <%s>  %s\n\n' "$name" "$email" "$(date -R)"
+    cat debian/changelog
+} > debian/changelog.new
+mv debian/changelog.new debian/changelog
+
+got=$(dpkg-parsechangelog -S Version)
+if [ "$got" != "$LOCAL_VERSION" ]; then
+    echo "changelog reads $got after editing, expected $LOCAL_VERSION" >&2
+    exit 1
+fi
+
+dpkg-checkbuilddeps
+DEB_BUILD_OPTIONS="parallel=$(nproc)" dpkg-buildpackage -b -uc -us
+
+# Offer only the packages already installed here, at the version just built,
+# and keep the archive versions they replace.
+cd "$WORK"
+mapfile -t installed < <(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' \
+    modemmanager 'libmm-glib*' 'gir1.2-modemmanager*' 2>/dev/null |
+    awk '$1 == "ii" { print $2 }')
+debs=()
+for pkg in "${installed[@]}"; do
+    for f in "${pkg}_${LOCAL_VERSION}_"*.deb; do
+        [ -e "$f" ] && debs+=("$WORK/$f")
+    done
+done
+if [ ${#debs[@]} -eq 0 ]; then
+    echo "built, but none of the resulting packages are installed here" >&2
+    exit 1
+fi
+
+mkdir original
+(cd original && apt-get download "${installed[@]/%/=$UBUNTU_VERSION}")
+originals=("$WORK"/original/*.deb)
+if [ ${#originals[@]} -ne ${#debs[@]} ]; then
+    echo "downloaded ${#originals[@]} originals for ${#debs[@]} packages" >&2
+    exit 1
+fi
+
+echo
+echo "built $LOCAL_VERSION. Install with:"
+printf '  sudo apt install'
+printf ' \\\n    %s' "${debs[@]}"
+printf '\n\nRoll back, offline, with:\n  sudo dpkg -i'
+printf ' \\\n    %s' "${originals[@]}"
+printf '\n'

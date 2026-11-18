@@ -211,7 +211,9 @@ sudo udevadm trigger --action=change /sys/class/wwan/wwan0qcdm0 \
 ```
 
 `mmcli --scan-modems` fails with `Operation was cancelled` after any suspend
-on ModemManager 1.25.95, so it is no alternative.
+on the archive's ModemManager 1.25.95, so it is no alternative there; the
+`+pdietl` build from `modemmanager-package/` carries the upstream fix for it,
+and does not lose the modem in the first place.
 
 ## Comparing against an Android phone
 

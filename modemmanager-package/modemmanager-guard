@@ -1,0 +1,50 @@
+#!/bin/bash
+# Warn when the installed modemmanager is no longer this repo's rebuild.
+#
+# Any newer Ubuntu upload outranks the <ubuntu version>+pdietl1 rebuild, so an
+# ordinary upgrade, unattended or not, replaces it without a word, and with it
+# the fix for the modem lost to a suspend during setup. 54modemmanager-guard
+# runs this after every dpkg transaction.
+#
+# It only ever warns, on stderr and in the journal (journalctl -t
+# modemmanager-guard): a failing DPkg::Post-Invoke hook turns every apt run
+# into an error, unattended-upgrades included, and a hold would also block
+# Ubuntu's security updates to the package.
+#
+# An argument stands in for the installed version, for testing.
+# Revert: rm /etc/apt/apt.conf.d/54modemmanager-guard and this script.
+
+set -u
+
+declare -r TAG=modemmanager-guard
+
+journal() {
+    local prio=$1
+    shift
+    logger -t "$TAG" -p "user.$prio" -- "$*" 2> /dev/null || true
+}
+
+if [ $# -gt 0 ]; then
+    v=$1
+else
+    [ "$(dpkg-query -Wf'${db:Status-Status}' modemmanager 2> /dev/null)" = installed ] || exit 0
+    v=$(dpkg-query -Wf'${Version}' modemmanager)
+fi
+
+case $v in
+*+pdietl*)
+    journal info "ok: modemmanager $v"
+    exit 0
+    ;;
+esac
+
+journal warning "modemmanager $v is not the lenovo-5g-modem rebuild; a suspend during modem setup loses the modem again unless this upload carries the fix. Rebuild with lenovo-5g-modem/modemmanager-package/build after setting UBUNTU_VERSION=$v"
+cat >&2 << EOF
+########################################################################
+$TAG: modemmanager $v is not the lenovo-5g-modem rebuild.
+A suspend during modem setup (a lid-closed boot) loses the modem again,
+unless this upload carries the fix. Rebuild on top of it: set
+UBUNTU_VERSION=$v in lenovo-5g-modem/modemmanager-package/build and run it.
+########################################################################
+EOF
+exit 0

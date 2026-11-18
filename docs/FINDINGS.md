@@ -202,6 +202,9 @@ packaged unit discards with the rest of stderr.
 by driving the daemon from a mocked logind on a private bus: the packaged
 1.25.95 daemon loses the modem and the patched one gets it back. Its `settled`
 mode checks that an ordinary suspend still rescans at once.
+`modemmanager-package/` builds the distro package with these patches. On that
+build, a real s2idle suspend that began 0.3 s into modem setup came back
+connected 22 s after the resume, and `mmcli -G`/`mmcli -S` kept working.
 
 ## ModemManager never exits if a modem is probed while it is shutting down
 

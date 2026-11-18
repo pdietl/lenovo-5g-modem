@@ -1,0 +1,65 @@
+From 8c101d508a55fc46edae5b71fad7b6f5e4df9e3f Mon Sep 17 00:00:00 2001
+From: Marin <1835-marin@users.noreply.gitlab.freedesktop.org>
+Date: Sun, 25 Oct 2026 10:08:45 +0100
+Subject: [PATCH] base-manager: fix use-after-free of polkit authentication
+ cancellable after suspend
+
+Fix UAF in `mm-base-manager.c` that caused DBus-exposed features to become unavailable after a single system suspend
+
+For an analysis of the bug, please see: https://gitlab.freedesktop.org/mobile-broadband/ModemManager/-/work_items/1075#note_3539427
+
+This fixes the issue through disposing the Polkit context in `mm-base-manager.c` only when the program actually exists, not just when the computer suspend.
+
+Fixes: https://gitlab.freedesktop.org/mobile-broadband/ModemManager/-/work_items/1075
+
+Signed-off-by: Marin <1835-marin@users.noreply.gitlab.freedesktop.org>
+(cherry picked from commit f994d6067645c219b8f315eb42b30c88d3544fef)
+---
+ src/main.c            | 3 ++-
+ src/mm-base-manager.c | 3 +++
+ src/mm-base-manager.h | 1 +
+ 3 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/main.c b/src/main.c
+index 7d32f667..6aa363fd 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -277,7 +277,8 @@ main (int argc, char *argv[])
+                                           inner);
+ 
+         mm_base_manager_cleanup (manager,
+-                                 MM_BASE_MANAGER_CLEANUP_DISABLE | MM_BASE_MANAGER_CLEANUP_REMOVE,
++                                 MM_BASE_MANAGER_CLEANUP_DISABLE | MM_BASE_MANAGER_CLEANUP_REMOVE |
++                                 MM_BASE_MANAGER_CLEANUP_EXIT,
+                                  ctx);
+ 
+         /* Wait for all modems to be disabled and removed, but don't wait
+diff --git a/src/mm-base-manager.c b/src/mm-base-manager.c
+index 7ba2cdec..976033e5 100644
+--- a/src/mm-base-manager.c
++++ b/src/mm-base-manager.c
+@@ -1174,6 +1174,9 @@ mm_base_manager_cleanup (MMBaseManager             *self,
+ 
+     /* Cancel all ongoing auth requests */
+     g_cancellable_cancel (self->priv->authp_cancellable);
++    g_clear_object (&self->priv->authp_cancellable);
++    if (!has_cleanup_flag(flags, MM_BASE_MANAGER_CLEANUP_EXIT))
++        self->priv->authp_cancellable = g_cancellable_new ();
+ 
+     disable = has_cleanup_flag (flags, MM_BASE_MANAGER_CLEANUP_DISABLE);
+     low_power = has_cleanup_flag (flags, MM_BASE_MANAGER_CLEANUP_LOW_POWER);
+diff --git a/src/mm-base-manager.h b/src/mm-base-manager.h
+index 16943299..e958b305 100644
+--- a/src/mm-base-manager.h
++++ b/src/mm-base-manager.h
+@@ -78,6 +78,7 @@ typedef enum {
+     MM_BASE_MANAGER_CLEANUP_LOW_POWER = 0x2,
+     MM_BASE_MANAGER_CLEANUP_REMOVE    = 0x4,
+     MM_BASE_MANAGER_CLEANUP_TERSE     = 0x8,
++    MM_BASE_MANAGER_CLEANUP_EXIT      = 0x10,
+ } MMBaseManagerCleanupFlags;
+ 
+ void             mm_base_manager_cleanup     (MMBaseManager             *manager,
+-- 
+2.53.0
+

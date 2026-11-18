@@ -83,9 +83,11 @@ connected as a fallback but loses the routing decision to any working link
   modem down as `user-requested`, which can leave the profile blocked from
   autoconnect) is not reported upstream yet, and the exact conditions that arm
   the block are only partially mapped — see docs/FINDINGS.md.
-- The ModemManager patches in `patches/` are not deployed here; running them
-  means rebuilding the distro package. Until then a suspend during modem setup
-  still loses the modem.
+- The ModemManager patches are deployed only while `dpkg -l modemmanager`
+  shows a `+pdietl` version, built by `modemmanager-package/build`. An ordinary
+  upgrade to a newer archive version replaces it and drops the fixes; rebuild
+  against the new version, or check its changelog carries them. With
+  `install-guard.sh` installed, `journalctl -t modemmanager-guard` says so.
 - None of the patches in `patches/` is upstream. Submitting them needs a
   gitlab.freedesktop.org fork, which needs a one-time project-limit request in
   the `freedesktop/freedesktop` issue tracker; new accounts there cannot create

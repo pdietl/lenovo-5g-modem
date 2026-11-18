@@ -1,0 +1,8 @@
+// Warn after every dpkg run once modemmanager is no longer the lenovo-5g-modem
+// rebuild, which any newer Ubuntu upload outranks. See modemmanager-guard for
+// why this only warns.
+//
+// Revert: rm this file and /usr/local/sbin/modemmanager-guard.
+DPkg::Post-Invoke {
+    "if [ -x /usr/local/sbin/modemmanager-guard ]; then /usr/local/sbin/modemmanager-guard; fi";
+};
