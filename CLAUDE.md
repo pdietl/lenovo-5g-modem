@@ -90,10 +90,9 @@ connected as a fallback but loses the routing decision to any working link
   against the new version, or check its changelog carries them. With
   `install-guard.sh` installed, `journalctl -t modemmanager-guard` says so.
 - The `qmicli` patch is merged in libqmi main (`7536d3a9`) but not yet in a
-  release. The ModemManager patches are not upstream. The account already has
-  a gitlab.freedesktop.org fork of libqmi, so it can fork ModemManager there
-  too; a gitlab.com fork cannot be used, because merge requests do not cross
-  GitLab instances and the CI config resolves `freedesktop/ci-templates` only
-  on the freedesktop instance.
+  release. The suspend-during-setup series (patches 0002-0004) is in review as
+  mobile-broadband/ModemManager!1528 on gitlab.freedesktop.org, from the
+  `pdietl/ModemManager` fork; review changes go in as fixups and a force-push.
+  The shutdown-hang patch (0001) is not submitted yet.
 - Replacing the vendor blob with pure `qmicli` needs a QMI service `0xE4`
   definition in libqmi; see docs/fcc-unlock-protocol.md.
